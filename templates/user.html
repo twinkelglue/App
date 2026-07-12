@@ -1,53 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ profile_user[0] }}의 에스크</title>
+    <style>
+        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 20px; margin: 0; }
+        .container { max-width: 450px; margin: 0 auto; background: #1a1a24; padding: 25px; border-radius: 20px; }
+        .profile-header { text-align: center; margin-bottom: 20px; }
+        .avatar { width: 100px; height: 100px; border-radius: 50%; border: 3px solid #adff2f; object-fit: cover; }
+        input[type="text"], textarea { width: 100%; padding: 15px; border: 2px solid #2e2e3e; border-radius: 20px; background: #252535; color: white; box-sizing: border-box; outline: none; margin-bottom: 10px; }
+        button { background: #adff2f; color: #000; border: none; padding: 12px; font-weight: bold; border-radius: 20px; cursor: pointer; width: 100%; }
+        .btn-alt { background: #252535; color: #fff; border: 1px solid #444; }
+        .msg-box { background: #252535; padding: 15px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid #adff2f; }
+        a { color: #8ab4f8; text-decoration: none; display: inline-block; margin-top: 10px; }
+    </style>
 </head>
 <body>
-    <h2>{{ profile_user[0] }}님의 페이지</h2>
-    <img src="/static/{{ profile_user[2] }}" width="150" height="150" style="border-radius: 50%;"><br>
-    <p><b>상태 메시지:</b> {{ profile_user[1] }}</p>
-
-    {% if session.get('user') == profile_user[0] %}
-        <form action="/update_profile" method="post" enctype="multipart/form-data">
-            <input type="text" name="bio" value="{{ profile_user[1] }}" placeholder="상태메시지 수정">
-            <input type="file" name="profile_img">
-            <button type="submit">프로필 수정</button>
-        </form>
-        <p><a href="/logout">로그아웃</a></p>
-    {% else %}
-        <p><a href="/chat/{{ profile_user[0] }}">💬 이 유저와 1:1 디엠하기</a></p>
-    {% endif %}
-    <p><a href="/">🏠 메인 홈으로</a></p>
-    <hr>
-
-    <h3>익명 질문 남기기</h3>
-    <form action="/ask/{{ profile_user[0] }}" method="post">
-        <textarea name="content" placeholder="여기에 익명 질문을 입력하세요..." rows="4" cols="50" required></textarea><br>
-        <button type="submit">질문 던지기 🚀</button>
-    </form>
-    <hr>
-
-    <h3>받은 질문들</h3>
-    {% for msg in messages %}
-        <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
-            <p><b>질문 (from {{ msg[1] }}):</b> {{ msg[2] }}</p>
-            {% if msg[3] %}
-                <p style="color: blue;"><b>답변:</b> {{ msg[3] }}</p>
-            {% else %}
-                <p style="color: red;"><i>아직 답변이 없습니다.</i></p>
-            {% endif %}
-
-            {% if session.get('user') == profile_user[0] %}
-                <form action="/answer/{{ msg[0] }}" method="post">
-                    <input type="text" name="answer" placeholder="답변을 적으세요..." value="{{ msg[3] if msg[3] else '' }}">
-                    <button type="submit">답변등록/수정</button>
-                </form>
-                <form action="/delete_message/{{ msg[0] }}" method="post" style="margin-top:5px;">
-                    <button type="submit" style="color: red;">질문 삭제</button>
-                </form>
+    <div class="container">
+        <p><a href="/">🏠 홈으로</a></p>
+        <div class="profile-header">
+            <img class="avatar" src="/static/{{ profile_user[2] }}">
+            <h2>{{ profile_user[0] }}</h2>
+            <p style="color:#adff2f; font-size:0.9rem;">👥 팔로워 {{ followers_count }}명</p>
+            <p style="color:#bbb; padding: 0 10px;">"{{ profile_user[1] }}"</p>
+            
+            {% if session.get('user') and session['user'] != profile_user[0] %}
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <form action="/follow/{{ profile_user[0] }}" method="post" style="flex:1;">
+                        <button type="submit" class="{% if is_following %}btn-alt{% endif %}">
+                            {% if is_following %}✔ 팔로잉 취소{% else %}⚡ 팔로우하기{% endif %}
+                        </button>
+                    </form>
+                    <a href="/chat/dm/{{ profile_user[0] }}" style="flex:1; background:#adff2f; color:#000; padding:12px; text-align:center; font-weight:bold; border-radius:20px; margin:0;">💬 갠톡하기</a>
+                </div>
             {% endif %}
         </div>
-    {% endfor %}
+
+        {% if session.get('user') == profile_user[0] %}
+            <fieldset style="border: 1px solid #2e2e3e; border-radius: 15px; padding: 15px; margin-bottom: 25px;">
+                <legend style="color:#adff2f; padding:0 5px;">내 프로필 관리</legend>
+                <form action="/update_profile" method="post" enctype="multipart/form-data">
+                    <input type="text" name="bio" value="{{ profile_user[1] }}" placeholder="상메 편집...">
+                    <input type="file" name="profile_img" style="color:#bbb; margin-bottom:10px;">
+                    <button type="submit">저장하기</button>
+                </form>
+            </fieldset>
+        {% endif %}
+
+        <h3 style="color:#adff2f;">Anonymous Question</h3>
+        <form action="/ask/{{ profile_user[0] }}" method="post">
+            <textarea name="content" placeholder="익명으로 속마음 질문하기..." rows="3" required></textarea>
+            <button type="submit">익명 질문 전송 🚀</button>
+        </form>
+
+        <h3 style="color:#adff2f; margin-top:30px;">Feeds</h3>
+        {% for msg in messages %}
+            <div class="msg-box">
+                <p style="color:#aaa; font-size:0.85rem;">❓ 익명질문 ({{ msg[4] }})</p>
+                <p style="font-size:1.05rem; font-weight:bold; margin: 5px 0;">{{ msg[2] }}</p>
+                {% if msg[3] %}
+                    <p style="color: #adff2f; margin-top:10px; padding-left:10px; border-left: 2px solid #adff2f;">💬 답변: {{ msg[3] }}</p>
+                {% else %}
+                    <p style="color: #666; font-size:0.9rem; italic">아직 답변 대기 중...</p>
+                {% endif %}
+
+                {% if session.get('user') == profile_user[0] %}
+                    <form action="/answer/{{ msg[0] }}" method="post" style="margin-top:10px; display:flex; gap:5px;">
+                        <input type="text" name="answer" value="{{ msg[3] if msg[3] else '' }}" placeholder="답변 달기..." style="margin:0; padding:10px;">
+                        <button type="submit" style="width:70px; padding:0;">등록</button>
+                    </form>
+                    <form action="/delete_message/{{ msg[0] }}" method="post" style="margin-top:5px;">
+                        <button type="submit" style="background:#ff6b6b; color:#fff; padding:5px; font-size:0.8rem;">삭제</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
 </body>
 </html>
