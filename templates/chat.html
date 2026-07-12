@@ -44,7 +44,7 @@
 
     <script>
         const chatBox = document.getElementById('chat-box-div');
-        chatBox.scrollTop = chatBox.scrollHeight; // 시작할 때 스크롤 맨 아래로
+        chatBox.scrollTop = chatBox.scrollHeight;
 
         function fetchMessages() {
             fetch('/api/chat_history/{{ room_type }}/{{ room_id }}')
@@ -57,15 +57,14 @@
                         html += `<div class="bubble ${isMe ? 'me' : 'other'}">${chat.message}</div>`;
                     });
                     
-                    // 스크롤이 맨 밑에 있는 상태였는지 기억했다가 대화 갱신 후 하단 유지
                     let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 50);
                     chatBox.innerHTML = html;
                     if(isBottom) {
                         chatBox.scrollTop = chatBox.scrollHeight;
                     }
-                });
+                }).catch(e => console.log("채팅방 동기화 대기중"));
         }
-        setInterval(fetchMessages, 3000); // 3초마다 상대방 대화 강제 동기화
+        setInterval(fetchMessages, 3000);
     </script>
 </body>
 </html>
