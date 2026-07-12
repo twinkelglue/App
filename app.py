@@ -44,7 +44,7 @@ def init_db():
         )
     ''')
     
-    # 3. 팔로우 테이블 (새로 추가)
+    # 3. 팔로우 테이블
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS follows (
             follower TEXT,
@@ -53,7 +53,7 @@ def init_db():
         )
     ''')
     
-    # 4. 단톡방/그룹방 목록 테이블 (새로 추가)
+    # 4. 단톡방/그룹방 목록 테이블
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_rooms (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +62,7 @@ def init_db():
         )
     ''')
     
-    # 5. 단톡방 멤버 테이블 (새로 추가)
+    # 5. 단톡방 멤버 테이블
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS room_members (
             room_id INTEGER,
@@ -71,12 +71,12 @@ def init_db():
         )
     ''')
     
-    # 6. 1:1 디엠 & 단톡방 통합 메시지 테이블 (구조 고도화)
+    # 6. 1:1 디엠 & 단톡방 통합 메시지 테이블
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            room_type TEXT, -- 'dm' 또는 'group'
-            room_identifier TEXT, -- DM은 'dm_유저1_유저2', 단톡방은 room_id 문자열
+            room_type TEXT,
+            room_identifier TEXT,
             sender TEXT,
             message TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -89,20 +89,44 @@ init_db()
 
 @app.route('/')
 def index():
-    # 메인 홈에서 현재 개설된 단톡방 목록도 보여주기 위함
     current_user = session.get('user')
     my_rooms = []
+    my_dms = []
+    
     if current_user:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
+        
+        # 내가 참여 중인 단톡방 목록 불러오기
         cursor.execute('''
             SELECT r.id, r.room_name FROM chat_rooms r
             JOIN room_members m ON r.id = m.room_id
             WHERE m.username = ?
         ''', (current_user,))
         my_rooms = cursor.fetchall()
+        
+        # [기능 고도화] 내가 대화한 적 있는 1:1 갠톡방 상대방 목록 추출하기
+        # room_identifier가 'dm_유저1_유저2' 형태이므로 내가 포함된 방 검색
+        cursor.execute('''
+            SELECT DISTINCT room_identifier FROM chat_messages 
+            WHERE room_type = 'dm' AND room_identifier LIKE ?
+        ''', (f"%{current_user}%",))
+        dm_rooms = cursor.fetchall()
+        
+        # 갠톡 상대방 이름만 깔끔하게 발라내기
+        for dm in dm_rooms:
+            parts = dm[0].replace("dm_", "").split("_")
+            if current_user in parts:
+                other_user = parts[1] if parts[0] == current_user else parts[0]
+                # 상대방 존재 여부 더블체크
+                cursor.execute("SELECT profile_img FROM users WHERE username = ?", (other_user,))
+                user_info = cursor.fetchone()
+                if user_info and other_user not in my_dms:
+                    my_dms.append(other_user)
+                    
         conn.close()
-    return render_template('index.html', my_rooms=my_rooms)
+        
+    return render_template('index.html', my_rooms=my_rooms, my_dms=my_dms)
 
 @app.route('/search', methods=['GET'])
 def search_user():
@@ -116,7 +140,6 @@ def search_user():
     cursor.execute("SELECT username, bio, profile_img FROM users WHERE username LIKE ?", (f"%{query}%",))
     users = cursor.fetchall()
     
-    # 검색된 유저별로 내가 팔로우 중인지 여부 체크
     results = []
     for u in users:
         is_following = False
@@ -185,9 +208,13 @@ def user_profile(username):
         conn.close()
         return "존재하지 않는 유저입니다.", 404
         
-    # 팔로우 수 및 팔로잉 여부 계산
+    # [기능 개선] 나를 팔로우한 사람 수 (나를 target으로 삼은 사람들)
     cursor.execute("SELECT COUNT(*) FROM follows WHERE following = ?", (username,))
     followers_count = cursor.fetchone()[0]
+    
+    # [기능 추가] 내가 팔로우한 사람 수 (내가 주체가 되어 저장한 사람들)
+    cursor.execute("SELECT COUNT(*) FROM follows WHERE follower = ?", (username,))
+    following_count = cursor.fetchone()[0]
     
     is_following = False
     if current_user:
@@ -198,9 +225,9 @@ def user_profile(username):
     cursor.execute("SELECT id, sender_username, content, answer, timestamp FROM messages WHERE target_username = ? ORDER BY id DESC", (username,))
     messages = cursor.fetchall()
     conn.close()
-    return render_template('user.html', profile_user=profile_user, messages=messages, followers_count=followers_count, is_following=is_following)
+    return render_template('user.html', profile_user=profile_user, messages=messages, 
+                           followers_count=followers_count, following_count=following_count, is_following=is_following)
 
-# [기능 추가] 팔로우 / 언팔로우 토글 로직
 @app.route('/follow/<username>', methods=['POST'])
 def follow_user(username):
     if 'user' not in session:
@@ -223,13 +250,13 @@ def follow_user(username):
     conn.close()
     return redirect(request.referrer or url_for('user_profile', username=username))
 
-# [기능 고도화] 1:1 개인 디엠방
 @app.route('/chat/dm/<username>', methods=['GET', 'POST'])
 def chat_dm(username):
     if 'user' not in session:
         return redirect(url_for('login'))
         
     current_user = session['user']
+    # 항상 유저 알파벳 순서대로 방 고유 key 생성하여 서로 엇갈리지 않게 함
     room_id = f"dm_{min(current_user, username)}_{max(current_user, username)}"
     
     conn = sqlite3.connect(db_path)
@@ -246,9 +273,8 @@ def chat_dm(username):
     cursor.execute("SELECT sender, message, timestamp FROM chat_messages WHERE room_identifier = ? ORDER BY timestamp ASC", (room_id,))
     chat_history = cursor.fetchall()
     conn.close()
-    return render_template('chat.html', target_name=f"{username}님과의 갠톡", chat_history=chat_history, is_group=False)
+    return render_template('chat.html', target_name=f"⚡ {username}님과의 갠톡", chat_history=chat_history, is_group=False)
 
-# [기능 추가] 내 팔로워 리스트 기반으로 여러개 단톡방 만들기 화면
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
     if 'user' not in session:
@@ -260,18 +286,15 @@ def create_group():
     
     if request.method == 'POST':
         room_name = request.form.get('room_name', '').strip()
-        invited_members = request.form.getlist('members') # 체크박스로 선택된 친구들
+        invited_members = request.form.getlist('members')
         
         if not room_name:
             return "단톡방 이름을 입력해주세요.", 400
             
-        # 방 생성
         cursor.execute("INSERT INTO chat_rooms (room_name, creator) VALUES (?, ?)", (room_name, current_user))
         new_room_id = cursor.lastrowid
         
-        # 나 자신 방에 추가
         cursor.execute("INSERT INTO room_members (room_id, username) VALUES (?, ?)", (new_room_id, current_user))
-        # 초대받은 친구들 방에 추가
         for member in invited_members:
             cursor.execute("INSERT INTO room_members (room_id, username) VALUES (?, ?)", (new_room_id, member))
             
@@ -279,13 +302,11 @@ def create_group():
         conn.close()
         return redirect(url_for('chat_group', room_id=new_room_id))
         
-    # 내가 팔로우한 사람들 목록을 가져와서 초대할 수 있게 함
     cursor.execute("SELECT following FROM follows WHERE follower = ?", (current_user,))
     my_friends = [row[0] for row in cursor.fetchall()]
     conn.close()
     return render_template('create_group.html', my_friends=my_friends)
 
-# [기능 추가] 여러 개 개설 가능한 단톡방 대화 내부
 @app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
 def chat_group(room_id):
     if 'user' not in session:
@@ -295,7 +316,6 @@ def chat_group(room_id):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 해당 방 멤버가 맞는지 검증
     cursor.execute("SELECT 1 FROM room_members WHERE room_id = ? AND username = ?", (room_id, current_user))
     if not cursor.fetchone():
         conn.close()
