@@ -14,6 +14,7 @@
         a { color: #8ab4f8; text-decoration: none; font-size: 0.95rem; }
         .btn-link { display: inline-block; background: #252535; color: #fff; padding: 12px; border-radius: 15px; width: 100%; text-align: center; box-sizing: border-box; margin-top: 8px; font-weight: bold; }
         .room-item { background: #252535; padding: 15px; border-radius: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .noti-badge { background: #ff4d4d; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold; margin-left: 5px; display: none; }
     </style>
 </head>
 <body>
@@ -24,21 +25,19 @@
             <a href="/user/{{ session['user'] }}" class="btn-link" style="background:#adff2f; color:#000; border-radius: 30px;">내 힙한 프로필 홈</a>
             <a href="/group/create" class="btn-link" style="border-radius: 30px;">➕ 새 단톡방 파기</a>
             
-            <!-- [추가] 1:1 개인 대화방 리스트 -->
-            <h3 style="margin-top:25px; color:#adff2f;">⚡ 내 개인 갠톡함</h3>
+            <h3 style="margin-top:25px; color:#adff2f;">⚡ 내 개인 갠톡함 <span id="dm-noti" class="noti-badge">🔴 NEW</span></h3>
             {% if my_dms %}
                 {% for other in my_dms %}
                     <div class="room-item">
-                        <span>💬 <b>{{ other }}</b>님과의 비밀대화</span>
+                        <span>💬 <b>{{ other }}</b>님과의 대화</span>
                         <a href="/chat/dm/{{ other }}" style="color:#adff2f; font-weight:bold;">톡방 열기</a>
                     </div>
                 {% endfor %}
             {% else %}
-                <p style="color:#666; font-size:0.9rem;">참여 중인 개인 갠톡이 없습니다.</p>
+                <p style="color:#666; font-size:0.9rem;">비밀 갠톡이 없습니다.</p>
             {% endif %}
 
-            <!-- 단톡방 리스트 -->
-            <h3 style="margin-top:25px; color:#adff2f;">👥 내 그룹 단톡방</h3>
+            <h3 style="margin-top:25px; color:#adff2f;">👥 내 그룹 단톡방 <span id="group-noti" class="noti-badge">🔴 NEW</span></h3>
             {% if my_rooms %}
                 {% for room in my_rooms %}
                     <div class="room-item">
@@ -47,7 +46,7 @@
                     </div>
                 {% endfor %}
             {% else %}
-                <p style="color:#666; font-size:0.9rem;">오픈된 단톡방이 없습니다.</p>
+                <p style="color:#666; font-size:0.9rem;">초대받은 단톡방이 없습니다.</p>
             {% endif %}
             
             <br><a href="/logout" style="color:#ff6b6b; display:block; text-align:center; margin-top:15px; font-weight:bold;">로그아웃</a>
@@ -65,5 +64,19 @@
             <button type="submit">검색하기</button>
         </form>
     </div>
+
+    <script>
+        function checkNoti() {
+            fetch('/api/check_notifications')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.new_dms > 0) document.getElementById('dm-noti').style.display = 'inline-block';
+                    if(data.new_groups > 0) document.getElementById('group-noti').style.display = 'inline-block';
+                }).catch(e => console.log("알림체크 패스"));
+        }
+        {% if session.get('user') %}
+            setInterval(checkNoti, 3000); // 3초 간격 작동
+        {% endif %}
+    </script>
 </body>
 </html>
