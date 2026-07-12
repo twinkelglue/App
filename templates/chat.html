@@ -1,23 +1,45 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>채팅방</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room</title>
+    <style>
+        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 15px; margin: 0; }
+        .chat-container { max-width: 450px; margin: 0 auto; background: #1a1a24; height: 100vh; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; }
+        .chat-header { background: #252535; padding: 15px; text-align: center; border-bottom: 1px solid #2e2e3e; font-weight: bold; color: #adff2f; }
+        .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #13131c; }
+        .bubble { margin-bottom: 12px; max-width: 75%; padding: 12px; border-radius: 15px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
+        .bubble.me { background: #adff2f; color: #000; margin-left: auto; border-top-right-radius: 2px; }
+        .bubble.other { background: #252535; color: #fff; margin-right: auto; border-top-left-radius: 2px; }
+        .chat-footer { padding: 10px; background: #1a1a24; display: flex; gap: 8px; border-top: 1px solid #2e2e3e; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 25px; border: 2px solid #2e2e3e; background: #252535; color: white; outline: none; }
+        button { background: #adff2f; color: #000; border: none; padding: 0 20px; font-weight: bold; border-radius: 25px; cursor: pointer; }
+    </style>
 </head>
 <body>
-    <h2>상대: {{ target_user }}</h2>
-    <p><a href="/">🏠 메인 홈으로</a></p>
-    <hr>
-    <div style="border: 1px solid #000; height: 300px; overflow-y: scroll; padding: 10px; background-color: #f9f9f9;">
-        {% for chat in chat_history %}
-            <p><b>{{ chat[0] }}:</b> {{ chat[1] }} <span style="font-size: 11px; color: gray;">({{ chat[2] }})</span></p>
-        {% endfor %}
+    <div class="chat-container">
+        <div class="chat-header">
+            {{ target_name }}
+            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 나가기</a>
+            <a href="#" onclick="location.reload();" style="color:#adff2f; text-decoration:none; font-size:0.8rem; float:right;">🔄 갱신</a>
+        </div>
+        
+        <div class="chat-box">
+            {% for chat in chat_history %}
+                <div style="font-size:0.75rem; color:#888; text-align: {% if chat[0] == session['user'] %}right{% else %}left{% endif %}; margin-bottom:2px;">
+                    {{ chat[0] }}
+                </div>
+                <div class="bubble {% if chat[0] == session['user'] %}me{% else %}other{% endif %}">
+                    {{ chat[1] }}
+                </div>
+            {% endfor %}
+        </div>
+        
+        <form class="chat-footer" method="post">
+            <input type="text" name="message" placeholder="메시지 입력 창..." required autocomplete="off" autofocus>
+            <button type="submit">전송</button>
+        </form>
     </div>
-    <br>
-    <form method="post">
-        <input type="text" name="message" style="width: 70%;" placeholder="메시지를 입력하세요..." required autofocus>
-        <button type="submit">전송</button>
-    </form>
-    <br>
-    <button onclick="location.reload();">🔄 새로고침 (새 메시지 확인)</button>
 </body>
 </html>
