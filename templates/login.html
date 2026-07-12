@@ -1,15 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>로그인</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 20px; }
+        .container { max-width: 450px; margin: 0 auto; background: #1a1a24; padding: 25px; border-radius: 20px; text-align: center; }
+        input { width: 100%; padding: 15px; border: 2px solid #2e2e3e; border-radius: 25px; background: #252535; color: white; box-sizing: border-box; outline: none; margin-bottom: 15px; }
+        button { background: #adff2f; color: #000; border: none; padding: 12px; font-weight: bold; border-radius: 25px; cursor: pointer; width: 100%; font-size:1rem; }
+    </style>
 </head>
 <body>
-    <h2>로그인</h2>
-    <form method="post">
-        <input type="text" name="username" placeholder="아이디" required><br><br>
-        <input type="password" name="password" placeholder="비밀번호" required><br><br>
-        <button type="submit">로그인</button>
-    </form>
-    <br><a href="/">홈으로</a>
+    <div class="container">
+        <h2 style="color:#adff2f;">SIGN IN</h2>
+        <form method="post">
+            <input type="text" name="username" placeholder="아이디" required>
+            <input type="password" name="password" placeholder="비밀번호" required>
+            <button type="submit">로그인</button>
+        </form>
+        <br><a href="/" style="color:#aaa; text-decoration:none;">🏠 홈으로</a>
+    </div>
 </body>
 </html>
