@@ -13,7 +13,7 @@ db_dir = "C:\\AskedPlatform"
 upload_dir = os.path.join(db_dir, "static")
 if not os.path.exists(upload_dir):
     os.makedirs(upload_dir)
-db_path = os.path.join(db_dir, "asked.db")
+db_path = os.path.join(os.getcwd(), "asked.db")
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
