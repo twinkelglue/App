@@ -34,7 +34,7 @@
                     </div>
                 {% endfor %}
             {% else %}
-                <p style="color:#666; font-size:0.9rem;">비밀 갠톡이 없습니다.</p>
+                <p style="color:#666; font-size:0.9rem;">참여 중인 갠톡이 없습니다.</p>
             {% endif %}
 
             <h3 style="margin-top:25px; color:#adff2f;">👥 내 그룹 단톡방 <span id="group-noti" class="noti-badge">🔴 NEW</span></h3>
@@ -72,10 +72,10 @@
                 .then(data => {
                     if(data.new_dms > 0) document.getElementById('dm-noti').style.display = 'inline-block';
                     if(data.new_groups > 0) document.getElementById('group-noti').style.display = 'inline-block';
-                }).catch(e => console.log("알림체크 패스"));
+                }).catch(e => console.log("알림 연동 대기중"));
         }
         {% if session.get('user') %}
-            setInterval(checkNoti, 3000); // 3초 간격 작동
+            setInterval(checkNoti, 3000);
         {% endif %}
     </script>
 </body>
