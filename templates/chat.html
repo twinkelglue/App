@@ -21,11 +21,11 @@
     <div class="chat-container">
         <div class="chat-header">
             {{ target_name }}
-            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 나가기</a>
-            <a href="#" onclick="location.reload();" style="color:#adff2f; text-decoration:none; font-size:0.8rem; float:right;">🔄 갱신</a>
+            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 홈화면</a>
+            <span style="font-size:0.75rem; color:#adff2f; margin-left:5px;">● 실시간 라이브</span>
         </div>
         
-        <div class="chat-box">
+        <div class="chat-box" id="chat-box-div">
             {% for chat in chat_history %}
                 <div style="font-size:0.75rem; color:#888; text-align: {% if chat[0] == session['user'] %}right{% else %}left{% endif %}; margin-bottom:2px;">
                     {{ chat[0] }}
@@ -36,10 +36,36 @@
             {% endfor %}
         </div>
         
-        <form class="chat-footer" method="post">
-            <input type="text" name="message" placeholder="메시지 입력 창..." required autocomplete="off" autofocus>
+        <form class="chat-footer" method="post" action="">
+            <input type="text" name="message" id="msg-input" placeholder="메시지 입력 창..." required autocomplete="off" autofocus>
             <button type="submit">전송</button>
         </form>
     </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box-div');
+        chatBox.scrollTop = chatBox.scrollHeight; // 시작할 때 스크롤 맨 아래로
+
+        function fetchMessages() {
+            fetch('/api/chat_history/{{ room_type }}/{{ room_id }}')
+                .then(res => res.json())
+                .then(data => {
+                    let html = '';
+                    data.forEach(chat => {
+                        let isMe = (chat.sender === "{{ session['user'] }}");
+                        html += `<div style="font-size:0.75rem; color:#888; text-align: ${isMe ? 'right' : 'left'}; margin-bottom:2px;">${chat.sender}</div>`;
+                        html += `<div class="bubble ${isMe ? 'me' : 'other'}">${chat.message}</div>`;
+                    });
+                    
+                    // 스크롤이 맨 밑에 있는 상태였는지 기억했다가 대화 갱신 후 하단 유지
+                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 50);
+                    chatBox.innerHTML = html;
+                    if(isBottom) {
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }
+                });
+        }
+        setInterval(fetchMessages, 3000); // 3초마다 상대방 대화 강제 동기화
+    </script>
 </body>
 </html>
