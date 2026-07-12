@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ profile_user[0] }}의 에스크</title>
+</head>
+<body>
+    <h2>{{ profile_user[0] }}님의 페이지</h2>
+    <img src="/static/{{ profile_user[2] }}" width="150" height="150" style="border-radius: 50%;"><br>
+    <p><b>상태 메시지:</b> {{ profile_user[1] }}</p>
+
+    {% if session.get('user') == profile_user[0] %}
+        <form action="/update_profile" method="post" enctype="multipart/form-data">
+            <input type="text" name="bio" value="{{ profile_user[1] }}" placeholder="상태메시지 수정">
+            <input type="file" name="profile_img">
+            <button type="submit">프로필 수정</button>
+        </form>
+        <p><a href="/logout">로그아웃</a></p>
+    {% else %}
+        <p><a href="/chat/{{ profile_user[0] }}">💬 이 유저와 1:1 디엠하기</a></p>
+    {% endif %}
+    <p><a href="/">🏠 메인 홈으로</a></p>
+    <hr>
+
+    <h3>익명 질문 남기기</h3>
+    <form action="/ask/{{ profile_user[0] }}" method="post">
+        <textarea name="content" placeholder="여기에 익명 질문을 입력하세요..." rows="4" cols="50" required></textarea><br>
+        <button type="submit">질문 던지기 🚀</button>
+    </form>
+    <hr>
+
+    <h3>받은 질문들</h3>
+    {% for msg in messages %}
+        <div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+            <p><b>질문 (from {{ msg[1] }}):</b> {{ msg[2] }}</p>
+            {% if msg[3] %}
+                <p style="color: blue;"><b>답변:</b> {{ msg[3] }}</p>
+            {% else %}
+                <p style="color: red;"><i>아직 답변이 없습니다.</i></p>
+            {% endif %}
+
+            {% if session.get('user') == profile_user[0] %}
+                <form action="/answer/{{ msg[0] }}" method="post">
+                    <input type="text" name="answer" placeholder="답변을 적으세요..." value="{{ msg[3] if msg[3] else '' }}">
+                    <button type="submit">답변등록/수정</button>
+                </form>
+                <form action="/delete_message/{{ msg[0] }}" method="post" style="margin-top:5px;">
+                    <button type="submit" style="color: red;">질문 삭제</button>
+                </form>
+            {% endif %}
+        </div>
+    {% endfor %}
+</body>
+</html>
