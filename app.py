@@ -4,6 +4,8 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+with app.app_context():
+    db.create_all()
 app.secret_key = 'asked_platform_secret_key'
 
 # 안전한 C드라이브 경로 설정 (무한 로딩 방지)
