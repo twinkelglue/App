@@ -18,7 +18,7 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블
+    # 1. 유저 테이블 (user.html에서 요구하는 bio, profile_pic 완벽 보존)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -137,7 +137,6 @@ def register():
             conn.close()
     return render_template('register.html')
 
-# 🎯 로그인 창이 안 열리던 버그를 login.html 렌더링으로 완벽 수정!
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
