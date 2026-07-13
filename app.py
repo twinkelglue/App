@@ -66,15 +66,15 @@ def index():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 내가 참여 중인 단톡방
+        # 1. 내가 '생성자'이거나 '멤버'로 초대받아 속해 있는 모든 단톡방 가져오기 (카톡 단톡방 방식)
         cursor.execute('''
-            SELECT r.id, r.room_name FROM chat_rooms r
+            SELECT DISTINCT r.id, r.room_name FROM chat_rooms r
             JOIN room_members m ON r.id = m.room_id
             WHERE m.username = ?
         ''', (current_user,))
         my_rooms = cursor.fetchall()
         
-        # [수정] 내가 포함된 1:1 대화방 목록 뽑아오기 정밀화
+        # 2. 1:1 갠톡방 추적 (내가 메시지를 보냈거나, 상대방이 나한테 갠톡을 보낸 적이 있는 모든 방 식별자 추출)
         cursor.execute('''
             SELECT DISTINCT room_identifier FROM chat_messages 
             WHERE room_type = 'dm' AND room_identifier LIKE ?
@@ -85,13 +85,16 @@ def index():
             parts = dm[0].replace("dm_", "").split("_and_")
             if len(parts) == 2 and current_user in parts:
                 other_user = parts[1] if parts[0] == current_user else parts[0]
-                if other_user not in my_dms:
+                # 상대방 유저가 가입된 유저인지 체크 후 리스트에 삽입
+                cursor.execute("SELECT 1 FROM users WHERE username = ?", (other_user,))
+                if cursor.fetchone() and other_user not in my_dms:
                     my_dms.append(other_user)
                     
         conn.close()
         
     return render_template('index.html', my_rooms=my_rooms, my_dms=my_dms)
 
+# [실시간 방/메시지 감지 API] - 메인 화면에 가만히 있어도 새로운 카톡방이 생기거나 새 대화가 왔는지 3초마다 체크
 @app.route('/api/check_notifications')
 def check_notifications():
     current_user = session.get('user')
@@ -101,26 +104,26 @@ def check_notifications():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 5초 내에 내가 아닌 다른 사람이 쓴 새 갠톡 메시지 수
+    # 최근 4초 이내에 상대방이 보낸 메시지 유무 판단
     cursor.execute('''
         SELECT COUNT(*) FROM chat_messages 
         WHERE room_type = 'dm' AND room_identifier LIKE ? AND sender != ?
-        AND timestamp >= datetime('now', '-5 seconds')
+        AND timestamp >= datetime('now', '-4 seconds')
     ''', (f"%{current_user}%", current_user))
     new_dms = cursor.fetchone()[0]
     
-    # 5초 내에 내가 속한 단톡방에 올라온 새 메시지 수
     cursor.execute('''
         SELECT COUNT(*) FROM chat_messages cm
         JOIN room_members rm ON cm.room_identifier = CAST(rm.room_id AS TEXT)
         WHERE cm.room_type = 'group' AND rm.username = ? AND cm.sender != ?
-        AND cm.timestamp >= datetime('now', '-5 seconds')
+        AND cm.timestamp >= datetime('now', '-4 seconds')
     ''', (current_user, current_user))
     new_groups = cursor.fetchone()[0]
     
     conn.close()
     return jsonify({"new_dms": new_dms, "new_groups": new_groups})
 
+# [채팅 라이브 갱신 API]
 @app.route('/api/chat_history/<room_type>/<identifier>')
 def api_chat_history(room_type, identifier):
     conn = sqlite3.connect(db_path)
@@ -141,7 +144,7 @@ def chat_dm(username):
     if 'user' not in session: return redirect(url_for('login'))
     current_user = session['user']
     
-    # [치명적 버그 수정] 알파벳 정렬 기준을 100% 매칭시켜서 철수방, 영희방이 따로 파이지 않게 완전 일치시킴
+    # 상대방과 나의 아이디를 정렬하여 하나의 고유한 방 이름(Key) 생성
     users_sorted = sorted([current_user, username])
     room_id = f"dm_{users_sorted[0]}_and_{users_sorted[1]}"
     
@@ -159,7 +162,6 @@ def chat_dm(username):
     chat_history = cursor.fetchall()
     conn.close()
     
-    # [치명적 버그 수정] 템플릿에 room_id와 room_type을 명확하게 전달하여 비동기 라이브 연동 작동시키기
     return render_template('chat.html', target_name=f"⚡ {username}님과의 갠톡", chat_history=chat_history, is_group=False, room_id=room_id, room_type="dm")
 
 @app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
@@ -168,16 +170,20 @@ def chat_group(room_id):
     current_user = session['user']
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    
+    # 단톡방 소속 권한 더블 체크
     cursor.execute("SELECT 1 FROM room_members WHERE room_id = ? AND username = ?", (room_id, current_user))
     if not cursor.fetchone():
         conn.close()
-        return "권한 없음", 403
+        return "접근 권한이 없는 단톡방입니다.", 403
+        
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
         if message:
             cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message) VALUES ('group', ?, ?, ?)", (str(room_id), current_user, message))
             conn.commit()
         return redirect(url_for('chat_group', room_id=room_id))
+        
     cursor.execute("SELECT room_name FROM chat_rooms WHERE id = ?", (room_id,))
     room_title = cursor.fetchone()[0]
     cursor.execute("SELECT username FROM room_members WHERE room_id = ?", (room_id,))
@@ -211,14 +217,14 @@ def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password')
-        if not username or not password: return "입력 누락", 400
+        if not username or not password: return "정보 입력 부족", 400
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
         if cursor.fetchone():
             conn.close()
             return "중복된 아이디", 400
-        cursor.execute("INSERT INTO users (username, password, bio) VALUES (?, ?, ?)", (username, password, "힙한 에스크!"))
+        cursor.execute("INSERT INTO users (username, password, bio) VALUES (?, ?, ?)", (username, password, "힙한 에스크 개설 완료!"))
         conn.commit()
         conn.close()
         return redirect(url_for('login'))
@@ -237,7 +243,7 @@ def login():
         if user and user[0] == password:
             session['user'] = username
             return redirect(url_for('user_profile', username=username))
-        return "로그인 정보 불일치", 400
+        return "정보 오류", 400
     return render_template('login.html')
 
 @app.route('/user/<username>')
@@ -267,7 +273,7 @@ def user_profile(username):
 def follow_user(username):
     if 'user' not in session: return redirect(url_for('login'))
     current_user = session['user']
-    if current_user == username: return "본인 팔로우 불가", 400
+    if current_user == username: return "본인 불가", 400
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT 1 FROM follows WHERE follower = ? AND following = ?", (current_user, username))
@@ -288,7 +294,7 @@ def create_group():
     if request.method == 'POST':
         room_name = request.form.get('room_name', '').strip()
         invited_members = request.form.getlist('members')
-        if not room_name: return "방이름 공백 불가", 400
+        if not room_name: return "방 이름 필수", 400
         cursor.execute("INSERT INTO chat_rooms (room_name, creator) VALUES (?, ?)", (room_name, current_user))
         new_room_id = cursor.lastrowid
         cursor.execute("INSERT INTO room_members (room_id, username) VALUES (?, ?)", (new_room_id, current_user))
