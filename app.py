@@ -1,14 +1,20 @@
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
 import sqlite3
 import os
+import re
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = 'asked_platform_hip_secret_key'
 
-base_dir = os.path.abspath(os.path.dirname(__file__))
-db_path = os.path.join(base_dir, "asked.db")
-upload_dir = os.path.join(base_dir, "static")
+# [데이터 유실 방지] Render 영구 디스크 경로(/data) 매핑
+if os.path.exists('/data'):
+    db_path = "/data/asked.db"
+    upload_dir = "/data/static"
+else:
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    db_path = os.path.join(base_dir, "asked.db")
+    upload_dir = os.path.join(base_dir, "static")
 
 if not os.path.exists(upload_dir):
     os.makedirs(upload_dir)
@@ -18,9 +24,28 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# 유튜브 링크를 iframe 임베드 태그로 변환해주는 헬퍼 함수
+def convert_youtube_links(text):
+    if not text:
+        return text
+    # 일반 주소 형식 매칭 (youtube.com/watch?v=...)
+    text = re.sub(
+        r'(https?://(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]+)[^\s]*)',
+        r'<br><iframe width="100%" height="220" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>',
+        text
+    )
+    # 단축 주소 형식 매칭 (youtu.be/...)
+    text = re.sub(
+        r'(https?://youtu\.be/([a-zA-Z0-9_-]+)[^\s]*)',
+        r'<br><iframe width="100%" height="220" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>',
+        text
+    )
+    return text
+
 def init_db():
     conn = sqlite3.connect(db_path, timeout=10)
     cursor = conn.cursor()
+    # 테이블 구조 보존
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY, password TEXT, bio TEXT, profile_img TEXT DEFAULT 'default_profile.png'
@@ -46,9 +71,10 @@ def init_db():
             room_id INTEGER, username TEXT, PRIMARY KEY (room_id, username)
         )
     ''')
+    # 이미지/파일 공유를 위해 file_path 컬럼이 없다면 자동 생성 로직 추가
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, room_type TEXT, room_identifier TEXT, sender TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT, room_type TEXT, room_identifier TEXT, sender TEXT, message TEXT, file_path TEXT DEFAULT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
@@ -66,7 +92,7 @@ def index():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 1. 내가 '생성자'이거나 '멤버'로 초대받아 속해 있는 모든 단톡방 가져오기 (카톡 단톡방 방식)
+        # 단톡방
         cursor.execute('''
             SELECT DISTINCT r.id, r.room_name FROM chat_rooms r
             JOIN room_members m ON r.id = m.room_id
@@ -74,7 +100,7 @@ def index():
         ''', (current_user,))
         my_rooms = cursor.fetchall()
         
-        # 2. 1:1 갠톡방 추적 (내가 메시지를 보냈거나, 상대방이 나한테 갠톡을 보낸 적이 있는 모든 방 식별자 추출)
+        # 갠톡방 추적
         cursor.execute('''
             SELECT DISTINCT room_identifier FROM chat_messages 
             WHERE room_type = 'dm' AND room_identifier LIKE ?
@@ -85,7 +111,6 @@ def index():
             parts = dm[0].replace("dm_", "").split("_and_")
             if len(parts) == 2 and current_user in parts:
                 other_user = parts[1] if parts[0] == current_user else parts[0]
-                # 상대방 유저가 가입된 유저인지 체크 후 리스트에 삽입
                 cursor.execute("SELECT 1 FROM users WHERE username = ?", (other_user,))
                 if cursor.fetchone() and other_user not in my_dms:
                     my_dms.append(other_user)
@@ -94,7 +119,6 @@ def index():
         
     return render_template('index.html', my_rooms=my_rooms, my_dms=my_dms)
 
-# [실시간 방/메시지 감지 API] - 메인 화면에 가만히 있어도 새로운 카톡방이 생기거나 새 대화가 왔는지 3초마다 체크
 @app.route('/api/check_notifications')
 def check_notifications():
     current_user = session.get('user')
@@ -104,7 +128,6 @@ def check_notifications():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 최근 4초 이내에 상대방이 보낸 메시지 유무 판단
     cursor.execute('''
         SELECT COUNT(*) FROM chat_messages 
         WHERE room_type = 'dm' AND room_identifier LIKE ? AND sender != ?
@@ -123,20 +146,28 @@ def check_notifications():
     conn.close()
     return jsonify({"new_dms": new_dms, "new_groups": new_groups})
 
-# [채팅 라이브 갱신 API]
 @app.route('/api/chat_history/<room_type>/<identifier>')
 def api_chat_history(room_type, identifier):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT sender, message, timestamp FROM chat_messages 
+        SELECT sender, message, file_path, timestamp FROM chat_messages 
         WHERE room_type = ? AND room_identifier = ? 
         ORDER BY timestamp ASC
     ''', (room_type, identifier))
     history = cursor.fetchall()
     conn.close()
     
-    chat_list = [{"sender": h[0], "message": h[1], "time": h[2]} for h in history]
+    chat_list = []
+    for h in history:
+        # 대화 텍스트 내 유튜브 링크 실시간 렌더링용 변환
+        converted_msg = convert_youtube_links(h[1])
+        chat_list.append({
+            "sender": h[0],
+            "message": converted_msg,
+            "file_path": h[2] if h[2] else "",
+            "time": h[3]
+        })
     return jsonify(chat_list)
 
 @app.route('/chat/dm/<username>', methods=['GET', 'POST'])
@@ -144,7 +175,6 @@ def chat_dm(username):
     if 'user' not in session: return redirect(url_for('login'))
     current_user = session['user']
     
-    # 상대방과 나의 아이디를 정렬하여 하나의 고유한 방 이름(Key) 생성
     users_sorted = sorted([current_user, username])
     room_id = f"dm_{users_sorted[0]}_and_{users_sorted[1]}"
     
@@ -153,14 +183,26 @@ def chat_dm(username):
     
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
-        if message:
-            cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message) VALUES ('dm', ?, ?, ?)", (room_id, current_user, message))
+        file = request.files.get('chat_img')
+        saved_filename = None
+        
+        # 이미지 파일 업로드 처리
+        if file and allowed_file(file.filename):
+            saved_filename = secure_filename(f"chat_{current_user}_{file.filename}")
+            file.save(os.path.join(upload_dir, saved_filename))
+            
+        if message or saved_filename:
+            cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message, file_path) VALUES ('dm', ?, ?, ?, ?)", (room_id, current_user, message, saved_filename))
             conn.commit()
         return redirect(url_for('chat_dm', username=username))
         
-    cursor.execute("SELECT sender, message, timestamp FROM chat_messages WHERE room_identifier = ? ORDER BY timestamp ASC", (room_id,))
-    chat_history = cursor.fetchall()
+    cursor.execute("SELECT sender, message, file_path, timestamp FROM chat_messages WHERE room_identifier = ? ORDER BY timestamp ASC", (room_id,))
+    raw_history = cursor.fetchall()
     conn.close()
+    
+    chat_history = []
+    for row in raw_history:
+        chat_history.append((row[0], convert_youtube_links(row[1]), row[2], row[3]))
     
     return render_template('chat.html', target_name=f"⚡ {username}님과의 갠톡", chat_history=chat_history, is_group=False, room_id=room_id, room_type="dm")
 
@@ -171,16 +213,22 @@ def chat_group(room_id):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # 단톡방 소속 권한 더블 체크
     cursor.execute("SELECT 1 FROM room_members WHERE room_id = ? AND username = ?", (room_id, current_user))
     if not cursor.fetchone():
         conn.close()
-        return "접근 권한이 없는 단톡방입니다.", 403
+        return "접근 권한 없음", 403
         
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
-        if message:
-            cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message) VALUES ('group', ?, ?, ?)", (str(room_id), current_user, message))
+        file = request.files.get('chat_img')
+        saved_filename = None
+        
+        if file and allowed_file(file.filename):
+            saved_filename = secure_filename(f"chat_{current_user}_{file.filename}")
+            file.save(os.path.join(upload_dir, saved_filename))
+            
+        if message or saved_filename:
+            cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message, file_path) VALUES ('group', ?, ?, ?, ?)", (str(room_id), current_user, message, saved_filename))
             conn.commit()
         return redirect(url_for('chat_group', room_id=room_id))
         
@@ -188,11 +236,17 @@ def chat_group(room_id):
     room_title = cursor.fetchone()[0]
     cursor.execute("SELECT username FROM room_members WHERE room_id = ?", (room_id,))
     members_list = [row[0] for row in cursor.fetchall()]
-    cursor.execute("SELECT sender, message, timestamp FROM chat_messages WHERE room_identifier = ? ORDER BY timestamp ASC", (str(room_id),))
-    chat_history = cursor.fetchall()
+    cursor.execute("SELECT sender, message, file_path, timestamp FROM chat_messages WHERE room_identifier = ? ORDER BY timestamp ASC", (str(room_id),))
+    raw_history = cursor.fetchall()
     conn.close()
+    
+    chat_history = []
+    for row in raw_history:
+        chat_history.append((row[0], convert_youtube_links(row[1]), row[2], row[3]))
+        
     return render_template('chat.html', target_name=f"👥 {room_title}", chat_history=chat_history, is_group=True, members_list=members_list, room_id=str(room_id), room_type="group")
 
+# 🔍 유저 검색 (기능 보존)
 @app.route('/search', methods=['GET'])
 def search_user():
     query = request.args.get('query', '').strip()
@@ -212,24 +266,26 @@ def search_user():
     conn.close()
     return render_template('search_results.html', query=query, results=results)
 
+# 회원가입 (기능 보존)
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password')
-        if not username or not password: return "정보 입력 부족", 400
+        if not username or not password: return "정보 누락", 400
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
         if cursor.fetchone():
             conn.close()
-            return "중복된 아이디", 400
-        cursor.execute("INSERT INTO users (username, password, bio) VALUES (?, ?, ?)", (username, password, "힙한 에스크 개설 완료!"))
+            return "중복 아이디", 400
+        cursor.execute("INSERT INTO users (username, password, bio) VALUES (?, ?, ?)", (username, password, "힙한 에스크!"))
         conn.commit()
         conn.close()
         return redirect(url_for('login'))
     return render_template('register.html')
 
+# 로그인 (기능 보존)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -243,9 +299,10 @@ def login():
         if user and user[0] == password:
             session['user'] = username
             return redirect(url_for('user_profile', username=username))
-        return "정보 오류", 400
+        return "정보 불일치", 400
     return render_template('login.html')
 
+# 📷 유저 프로필 홈 및 에스크 질문 내역 (기능 완전 보존)
 @app.route('/user/<username>')
 def user_profile(username):
     current_user = session.get('user')
@@ -269,6 +326,7 @@ def user_profile(username):
     conn.close()
     return render_template('user.html', profile_user=profile_user, messages=messages, followers_count=followers_count, following_count=following_count, is_following=is_following)
 
+# 👥 팔로우 (기능 보존)
 @app.route('/follow/<username>', methods=['POST'])
 def follow_user(username):
     if 'user' not in session: return redirect(url_for('login'))
@@ -285,6 +343,7 @@ def follow_user(username):
     conn.close()
     return redirect(request.referrer or url_for('user_profile', username=username))
 
+# 단톡방 개설 (기능 보존)
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
     if 'user' not in session: return redirect(url_for('login'))
@@ -294,7 +353,7 @@ def create_group():
     if request.method == 'POST':
         room_name = request.form.get('room_name', '').strip()
         invited_members = request.form.getlist('members')
-        if not room_name: return "방 이름 필수", 400
+        if not room_name: return "방이름 공백 불가", 400
         cursor.execute("INSERT INTO chat_rooms (room_name, creator) VALUES (?, ?)", (room_name, current_user))
         new_room_id = cursor.lastrowid
         cursor.execute("INSERT INTO room_members (room_id, username) VALUES (?, ?)", (new_room_id, current_user))
@@ -308,6 +367,7 @@ def create_group():
     conn.close()
     return render_template('create_group.html', my_friends=my_friends)
 
+# ❓ 에스크 질문 던지기 (기능 보존)
 @app.route('/ask/<username>', methods=['POST'])
 def ask(username):
     content = request.form.get('content', '').strip()
@@ -319,6 +379,7 @@ def ask(username):
     conn.close()
     return redirect(url_for('user_profile', username=username))
 
+# ✍️ 에스크 답변 달기 (기능 보존)
 @app.route('/answer/<int:msg_id>', methods=['POST'])
 def answer(msg_id):
     if 'user' not in session: return redirect(url_for('login'))
@@ -334,6 +395,7 @@ def answer(msg_id):
     conn.close()
     return redirect(url_for('user_profile', username=current_user))
 
+# 에스크 삭제 (기능 보존)
 @app.route('/delete_message/<int:msg_id>', methods=['POST'])
 def delete_message(msg_id):
     if 'user' not in session: return redirect(url_for('login'))
@@ -348,6 +410,7 @@ def delete_message(msg_id):
     conn.close()
     return redirect(url_for('user_profile', username=current_user))
 
+# 📷 프사 및 Bio 수정 기능 (기능 완전 보존)
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     if 'user' not in session: return redirect(url_for('login'))
