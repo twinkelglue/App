@@ -6,103 +6,51 @@
     <title>ChatClub Room</title>
     <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { 
-            background-color: #fafafa; 
-            color: #262626; 
-            font-family: 'Pretendard', sans-serif; 
-            margin: 0; 
-            padding: 20px;
-        }
-        .chat-container { 
-            max-width: 420px; 
-            margin: 30px auto; 
-            background: #ffffff; 
-            border: 1px solid #dbdbdb; 
-            border-radius: 16px; 
-            display: flex; 
-            flex-direction: column; 
-            height: 80vh;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-            overflow: hidden;
-        }
-        .chat-header { 
-            padding: 16px; 
-            border-bottom: 1px solid #dbdbdb; 
-            font-weight: 700; 
-            font-size: 1.1rem; 
-            text-align: center;
-            background: #ffffff;
-        }
-        .chat-messages { 
-            flex: 1; 
-            padding: 16px; 
-            overflow-y: auto; 
-            background: #ffffff;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+        body { background-color: #fafafa; color: #262626; font-family: 'Pretendard', sans-serif; margin: 0; padding: 20px; }
+        .chat-container { max-width: 420px; margin: 30px auto; background: #ffffff; border: 1px solid #dbdbdb; border-radius: 16px; display: flex; flex-direction: column; height: 80vh; box-shadow: 0 4px 12px rgba(0,0,0,0.03); overflow: hidden; }
+        .chat-header { padding: 16px; border-bottom: 1px solid #dbdbdb; font-weight: 700; font-size: 1.1rem; text-align: center; background: #ffffff; }
+        .chat-messages { flex: 1; padding: 16px; overflow-y: auto; background: #ffffff; display: flex; flex-direction: column; gap: 10px; }
         .msg-row { display: flex; flex-direction: column; margin-bottom: 4px; }
         .msg-sender { font-size: 0.8rem; color: #737373; margin-bottom: 2px; font-weight: 600; }
-        /* 인스타 DM 감성의 말풍선 */
-        .msg-bubble { 
-            display: inline-block; 
-            max-width: 75%; 
-            padding: 10px 14px; 
-            border-radius: 18px; 
-            font-size: 0.95rem; 
-            line-height: 1.4;
-            word-break: break-all;
-        }
+        .msg-bubble { display: inline-block; max-width: 75%; padding: 10px 14px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; word-break: break-all; }
         .msg-row.me { align-items: flex-end; }
-        .msg-row.me .msg-bubble { background: #0095f6; color: #ffffff; } /* 내가 보낸 건 인스타 블루 */
+        .msg-row.me .msg-bubble { background: #0095f6; color: #ffffff; }
         .msg-row.other { align-items: flex-start; }
-        .msg-row.other .msg-bubble { background: #efefef; color: #262626; } /* 남이 보낸 건 연회색 */
-        
-        .chat-input-area { 
-            padding: 12px; 
-            border-top: 1px solid #dbdbdb; 
-            display: flex; 
-            gap: 8px; 
-            background: #ffffff;
-        }
-        .chat-input-area input { 
-            flex: 1; 
-            padding: 12px 16px; 
-            border: 1px solid #dbdbdb; 
-            border-radius: 20px; 
-            outline: none; 
-            font-size: 0.95rem;
-            background: #fafafa;
-        }
-        .chat-input-area button { 
-            background: #000000; 
-            color: #fff; 
-            border: none; 
-            padding: 0 18px; 
-            border-radius: 20px; 
-            font-weight: 600; 
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-        .back-link { display: block; text-align: center; margin-top: 15px; color: #737373; font-size: 0.9rem; text-decoration: none; }
+        .msg-row.other .msg-bubble { background: #efefef; color: #262626; }
+        .chat-input-area { padding: 12px; border-top: 1px solid #dbdbdb; display: flex; gap: 8px; background: #ffffff; align-items: center; }
+        .chat-input-area input { flex: 1; padding: 12px 16px; border: 1px solid #dbdbdb; border-radius: 20px; outline: none; font-size: 0.95rem; background: #fafafa; }
+        .chat-input-area button { background: #000000; color: #fff; border: none; padding: 12px 18px; border-radius: 20px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+        .back-link { display: block; text-align: center; margin-top: 15px; color: #737373; font-size: 0.9rem; text-decoration: none; font-weight: 600; }
     </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">💬 {{ target_name }}</div>
-        <div class="chat-messages" id="chatBox"></div>
-        <div class="chat-input-area">
-            <input type="text" id="msgInput" placeholder="메시지 보내기..." onkeypress="if(event.keyCode==13) sendMsg()">
-            <button onclick=sendMsg()>전송</button>
+    <div class="container" style="max-width: 420px; margin: 0 auto;">
+        <div class="chat-container">
+            <div class="chat-header">💬 {{ target_name }}님과의 대화</div>
+            <div class="chat-messages" id="chatBox"></div>
+            
+            <div class="chat-input-area">
+                <input type="file" id="imgInput" accept="image/*" style="display: none;" onchange="updateFileLabel()">
+                <button type="button" onclick="document.getElementById('imgInput').click()" style="background:#efefef; color:#000; padding:10px 12px; font-size:0.8rem;" id="fileBtn">📸</button>
+                
+                <input type="text" id="msgInput" placeholder="메시지 보내기..." onkeypress="if(event.keyCode==13) sendMsg()">
+                <button onclick="sendMsg()">전송</button>
+            </div>
         </div>
+        <a href="/" class="back-link">⬅️ ChatClub 홈으로 탈출</a>
     </div>
-    <a href="/" class="back-link">⬅️ ChatClub 홈으로 탈출</a>
 
     <script>
         const roomType = "{{ room_type }}";
         const roomId = "{{ room_id }}";
         const myName = "{{ session.get('user') }}";
+
+        function updateFileLabel() {
+            const file = document.getElementById('imgInput').files[0];
+            if(file) {
+                document.getElementById('fileBtn').innerText = "✅";
+            }
+        }
 
         function loadMessages() {
             fetch(`/api/messages/${roomType}/${roomId}`)
@@ -120,30 +68,43 @@
                         `;
                     });
                     box.innerHTML = html;
+                    box.scrollTop = box.scrollHeight; // 새로운 톡 오면 자동 스크롤 다운
                 });
         }
 
         function sendMsg() {
             const inp = document.getElementById('msgInput');
+            const fileInp = document.getElementById('imgInput');
             const txt = inp.value.trim();
-            if(!txt) return;
+            
+            if(!txt && fileInp.files.length === 0) return;
 
+            // app.py의 새 데이터 규격에 100% 동기화 매칭
             const formData = new FormData();
             formData.append('room_type', roomType);
             formData.append('room_id', roomId);
             formData.append('message', txt);
+            if(fileInp.files[0]) {
+                formData.append('image', fileInp.files[0]);
+            }
 
             fetch('/api/send_message', { method: 'POST', body: formData })
                 .then(res => res.json())
                 .then(data => {
                     if(data.status === 'success') {
                         inp.value = '';
+                        fileInp.value = ''; // 초기화
+                        document.getElementById('fileBtn').innerText = "📸"; // 아이콘 복구
                         loadMessages();
+                    } else {
+                        alert("전송 실패 🤔");
                     }
-                });
+                }).catch(e => console.log("에러 발생:", e));
         }
+        
         setInterval(loadMessages, 3000);
         loadMessages();
     </script>
 </body>
 </html>
+
