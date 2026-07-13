@@ -1,377 +1,398 @@
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
+import psycopg2
 import os
 import re
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
-import psycopg2
-from psycopg2.extras import DictCursor
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = 'your_very_secret_key_here'
+app.secret_key = 'asked_platform_hip_secret_key'
 
-# 데이터베이스 연결 함수 (Neon Postgres)
+# Render에 등록한 Neon DB 주소를 자동으로 가져옴
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/asked')
+
+# 프사 전송용 폴더 (프사는 내 프로필에 계속 남아있어야 하므로 유지)
+upload_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static")
+if not os.path.exists(upload_dir):
+    os.makedirs(upload_dir)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 def get_db_connection():
-    DATABASE_URL = os.environ.get('DATABASE_URL')
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
-    return conn
+    url = DATABASE_URL
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return psycopg2.connect(url)
 
-# 데이터베이스 테이블 초기화 (기존 순정 버전으로 원상복구)
+def convert_youtube_links(text):
+    if not text: return text
+    text = re.sub(
+        r'(https?://(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]+)[^\s]*)',
+        r'<br><iframe width="100%" height="220" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>',
+        text
+    )
+    text = re.sub(
+        r'(https?://youtu\.be/([a-zA-Z0-9_-]+)[^\s]*)',
+        r'<br><iframe width="100%" height="220" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>',
+        text
+    )
+    return text
+
 def init_db():
     conn = get_db_connection()
-    cur = conn.cursor()
-    
-    # 1. 유저 테이블
-    cur.execute('''
+    cursor = conn.cursor()
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            bio TEXT DEFAULT '',
-            profile_pic TEXT DEFAULT ''
+            username TEXT PRIMARY KEY, password TEXT, bio TEXT, profile_img TEXT DEFAULT 'default_profile.png'
         )
     ''')
-    
-    # 2. 팔로우 테이블
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS follows (
-            id SERIAL PRIMARY KEY,
-            follower_id INT NOT NULL,
-            following_id INT NOT NULL,
-            UNIQUE(follower_id, following_id)
-        )
-    ''')
-    
-    # 3. 에스크 질문 테이블
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS asked (
-            id SERIAL PRIMARY KEY,
-            target_user TEXT NOT NULL,
-            question TEXT NOT NULL,
-            answer TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # 4. 채팅 메시지 테이블 (사진 기능 완벽 제거)
-    cur.execute('''
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
-            id SERIAL PRIMARY KEY,
-            room_type TEXT NOT NULL, 
-            room_id TEXT NOT NULL,     
-            sender TEXT NOT NULL,
-            message TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            id SERIAL PRIMARY KEY, target_username TEXT, sender_username TEXT, content TEXT, answer TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
-    # 5. 그룹 단톡방 정보 테이블
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS group_rooms (
-            id SERIAL PRIMARY KEY,
-            room_name TEXT NOT NULL,
-            created_by TEXT NOT NULL
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS follows (
+            follower TEXT, following TEXT, PRIMARY KEY (follower, following)
         )
     ''')
-    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_rooms (
+            id SERIAL PRIMARY KEY, room_name TEXT, creator TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS room_members (
+            room_id INTEGER, username TEXT, PRIMARY KEY (room_id, username)
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id SERIAL PRIMARY KEY, room_type TEXT, room_identifier TEXT, sender TEXT, message TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
-    cur.close()
+    cursor.close()
     conn.close()
 
 init_db()
 
-# 유튜브 링크 자동 변환 헬퍼 함수
-def convert_youtube_links(text):
-    if not text:
-        return ""
-    pattern = r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11}))'
-    replacement = r'<br><iframe width="100%" height="200" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>'
-    return re.sub(pattern, replacement, text)
-
 @app.route('/')
-def home():
-    if 'user' in session:
+def index():
+    current_user = session.get('user')
+    my_rooms, my_dms = [], []
+    if current_user:
         conn = get_db_connection()
-        cur = conn.cursor()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT r.id, r.room_name FROM chat_rooms r
+            JOIN room_members m ON r.id = m.room_id WHERE m.username = %s
+        ''', (current_user,))
+        my_rooms = cursor.fetchall()
         
-        # 내가 대화한 적 있는 DM 상대방들 가져오기
-        cur.execute('''
-            SELECT DISTINCT room_id FROM messages 
-            WHERE room_type = 'dm' AND room_id LIKE %s
-        ''', (f"%{session['user']}%",))
-        dm_rooms = cur.fetchall()
-        my_dms = []
-        for r in dm_rooms:
-            parts = r['room_id'].split('-')
-            if session['user'] in parts:
-                other = parts[1] if parts[0] == session['user'] else parts[0]
-                if other not in my_dms:
-                    my_dms.append(other)
-                    
-        # 모든 그룹 단톡방 리스트 가져오기
-        cur.execute('SELECT id, room_name FROM group_rooms')
-        my_rooms = cur.fetchall()
-        
-        cur.close()
+        cursor.execute('''
+            SELECT DISTINCT room_identifier FROM chat_messages 
+            WHERE room_type = 'dm' AND room_identifier LIKE %s
+        ''', (f"%{current_user}%",))
+        dm_rooms = cursor.fetchall()
+        for dm in dm_rooms:
+            parts = dm[0].replace("dm_", "").split("_and_")
+            if len(parts) == 2 and current_user in parts:
+                other_user = parts[1] if parts[0] == current_user else parts[0]
+                cursor.execute("SELECT 1 FROM users WHERE username = %s", (other_user,))
+                if cursor.fetchone() and other_user not in my_dms:
+                    my_dms.append(other_user)
+        cursor.close()
         conn.close()
-        return render_template('index.html', my_dms=my_dms, my_rooms=my_rooms)
-    return render_template('index.html')
+    return render_template('index.html', my_rooms=my_rooms, my_dms=my_dms)
+
+@app.route('/api/check_notifications')
+def check_notifications():
+    current_user = session.get('user')
+    if not current_user: return jsonify({"status": "unauthorized"}), 401
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*) FROM chat_messages 
+        WHERE room_type = 'dm' AND room_identifier LIKE %s AND sender != %s
+        AND timestamp >= NOW() - INTERVAL '4 seconds'
+    ''', (f"%{current_user}%", current_user))
+    new_dms = cursor.fetchone()[0]
+    
+    cursor.execute('''
+        SELECT COUNT(*) FROM chat_messages cm
+        JOIN room_members rm ON cm.room_identifier = CAST(rm.room_id AS TEXT)
+        WHERE cm.room_type = 'group' AND rm.username = %s AND cm.sender != %s
+        AND cm.timestamp >= NOW() - INTERVAL '4 seconds'
+    ''', (current_user, current_user))
+    new_groups = cursor.fetchone()[0]
+    cursor.close()
+    conn.close()
+    return jsonify({"new_dms": new_dms, "new_groups": new_groups})
+
+@app.route('/api/chat_history/<room_type>/<identifier>')
+def api_chat_history(room_type, identifier):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT sender, message, timestamp FROM chat_messages 
+        WHERE room_type = %s AND room_identifier = %s ORDER BY timestamp ASC
+    ''', (room_type, identifier))
+    history = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    chat_list = [{"sender": h[0], "message": convert_youtube_links(h[1]), "time": str(h[2])} for h in history]
+    return jsonify(chat_list)
+
+@app.route('/chat/dm/<username>', methods=['GET', 'POST'])
+def chat_dm(username):
+    if 'user' not in session: return redirect(url_for('login'))
+    current_user = session['user']
+    users_sorted = sorted([current_user, username])
+    room_id = f"dm_{users_sorted[0]}_and_{users_sorted[1]}"
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if request.method == 'POST':
+        message = request.form.get('message', '').strip()
+        if message:
+            cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message) VALUES ('dm', %s, %s, %s)", (room_id, current_user, message))
+            conn.commit()
+        cursor.close()
+        conn.close()
+        return redirect(url_for('chat_dm', username=username))
+    cursor.execute("SELECT sender, message, timestamp FROM chat_messages WHERE room_identifier = %s ORDER BY timestamp ASC", (room_id,))
+    raw_history = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    chat_history = [(row[0], convert_youtube_links(row[1]), row[2]) for row in raw_history]
+    return render_template('chat.html', target_name=f"⚡ {username}님과의 갠톡", chat_history=chat_history, is_group=False, room_id=room_id, room_type="dm")
+
+@app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
+def chat_group(room_id):
+    if 'user' not in session: return redirect(url_for('login'))
+    current_user = session['user']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM room_members WHERE room_id = %s AND username = %s", (room_id, current_user))
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return "접근 권한 없음", 403
+    if request.method == 'POST':
+        message = request.form.get('message', '').strip()
+        if message:
+            cursor.execute("INSERT INTO chat_messages (room_type, room_identifier, sender, message) VALUES ('group', %s, %s, %s)", (str(room_id), current_user, message))
+            conn.commit()
+        cursor.close()
+        conn.close()
+        return redirect(url_for('chat_group', room_id=room_id))
+    cursor.execute("SELECT room_name FROM chat_rooms WHERE id = %s", (room_id,))
+    room_title = cursor.fetchone()[0]
+    cursor.execute("SELECT username FROM room_members WHERE room_id = %s", (room_id,))
+    members_list = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT sender, message, timestamp FROM chat_messages WHERE room_identifier = %s ORDER BY timestamp ASC", (str(room_id),))
+    raw_history = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    chat_history = [(row[0], convert_youtube_links(row[1]), row[2]) for row in raw_history]
+    return render_template('chat.html', target_name=f"👥 {room_title}", chat_history=chat_history, is_group=True, members_list=members_list, room_id=str(room_id), room_type="group")
+
+@app.route('/search')
+def search_user():
+    query = request.args.get('query', '').strip()
+    if not query: return redirect(url_for('index'))
+    current_user = session.get('user')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, bio, profile_img FROM users WHERE username LIKE %s", (f"%{query}%",))
+    users = cursor.fetchall()
+    results = []
+    for u in users:
+        is_following = False
+        if current_user:
+            cursor.execute("SELECT 1 FROM follows WHERE follower = %s AND following = %s", (current_user, u[0]))
+            if cursor.fetchone(): is_following = True
+        results.append((u[0], u[1], u[2], is_following))
+    cursor.close()
+    conn.close()
+    return render_template('search_results.html', query=query, results=results)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username'].strip()
-        password = request.form['password'].strip()
-        if not username or not password:
-            return "아이디와 비밀번호를 입력해주세요."
-        
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password')
+        if not username or not password: return "정보 누락", 400
         conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, password))
-            conn.commit()
-            session['user'] = username
-            return redirect(url_for('profile', username=username))
-        except psycopg2.errors.UniqueViolation:
-            conn.rollback()
-            return "이미 존재하는 아이디입니다."
-        finally:
-            cur.close()
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+        if cursor.fetchone():
+            cursor.close()
             conn.close()
+            return "중복 아이디", 400
+        cursor.execute("INSERT INTO users (username, password, bio) VALUES (%s, %s, %s)", (username, password, "힙한 에스크!"))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return redirect(url_for('login'))
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username'].strip()
-        password = request.form['password'].strip()
-        
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password')
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT * FROM users WHERE username = %s AND password = %s', (username, password))
-        user = cur.fetchone()
-        cur.close()
+        cursor = conn.cursor()
+        cursor.execute("SELECT password FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
+        cursor.close()
         conn.close()
-        
-        if user:
+        if user and user[0] == password:
             session['user'] = username
-            return redirect(url_for('profile', username=username))
-        else:
-            return "아이디 또는 비밀번호가 틀렸습니다."
-    return render_template('index.html')
+            return redirect(url_for('user_profile', username=username))
+        return "정보 불일치", 400
+    return render_template('login.html')
+
+@app.route('/user/<username>')
+def user_profile(username):
+    current_user = session.get('user')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, bio, profile_img FROM users WHERE username = %s", (username,))
+    profile_user = cursor.fetchone()
+    if not profile_user:
+        cursor.close()
+        conn.close()
+        return "유저 없음", 404
+    cursor.execute("SELECT COUNT(*) FROM follows WHERE following = %s", (username,))
+    followers_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM follows WHERE follower = %s", (username,))
+    following_count = cursor.fetchone()[0]
+    is_following = False
+    if current_user:
+        cursor.execute("SELECT 1 FROM follows WHERE follower = %s AND following = %s", (current_user, username))
+        if cursor.fetchone(): is_following = True
+    cursor.execute("SELECT id, sender_username, content, answer, timestamp FROM messages WHERE target_username = %s ORDER BY id DESC", (username,))
+    messages = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('user.html', profile_user=profile_user, messages=messages, followers_count=followers_count, following_count=following_count, is_following=is_following)
+
+@app.route('/follow/<username>', methods=['POST'])
+def follow_user(username):
+    if 'user' not in session: return redirect(url_for('login'))
+    current_user = session['user']
+    if current_user == username: return "본인 불가", 400
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM follows WHERE follower = %s AND following = %s", (current_user, username))
+    if cursor.fetchone():
+        cursor.execute("DELETE FROM follows WHERE follower = %s AND following = %s", (current_user, username))
+    else:
+        cursor.execute("INSERT INTO follows (follower, following) VALUES (%s, %s)", (current_user, username))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(request.referrer or url_for('user_profile', username=username))
+
+@app.route('/group/create', methods=['GET', 'POST'])
+def create_group():
+    if 'user' not in session: return redirect(url_for('login'))
+    current_user = session['user']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if request.method == 'POST':
+        room_name = request.form.get('room_name', '').strip()
+        invited_members = request.form.getlist('members')
+        if not room_name: return "방이름 공백 불가", 400
+        cursor.execute("INSERT INTO chat_rooms (room_name, creator) VALUES (%s, %s) RETURNING id", (room_name, current_user))
+        new_room_id = cursor.fetchone()[0]
+        cursor.execute("INSERT INTO room_members (room_id, username) VALUES (%s, %s)", (new_room_id, current_user))
+        for member in invited_members:
+            cursor.execute("INSERT INTO room_members (room_id, username) VALUES (%s, %s)", (new_room_id, member))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return redirect(url_for('chat_group', room_id=new_room_id))
+    cursor.execute("SELECT following FROM follows WHERE follower = %s", (current_user,))
+    my_friends = [row[0] for row in cursor.fetchall()]
+    cursor.close()
+    conn.close()
+    return render_template('create_group.html', my_friends=my_friends)
+
+@app.route('/ask/<username>', methods=['POST'])
+def ask(username):
+    content = request.form.get('content', '').strip()
+    sender = session.get('user', '익명')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO messages (target_username, sender_username, content) VALUES (%s, %s, %s)", (username, sender, content))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for('user_profile', username=username))
+
+@app.route('/answer/<int:msg_id>', methods=['POST'])
+def answer(msg_id):
+    if 'user' not in session: return redirect(url_for('login'))
+    answer_text = request.form.get('answer', '').strip()
+    current_user = session['user']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT target_username FROM messages WHERE id = %s", (msg_id,))
+    msg = cursor.fetchone()
+    if msg and msg[0] == current_user:
+        cursor.execute("UPDATE messages SET answer = %s WHERE id = %s", (answer_text, msg_id))
+        conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for('user_profile', username=current_user))
+
+@app.route('/delete_message/<int:msg_id>', methods=['POST'])
+def delete_message(msg_id):
+    if 'user' not in session: return redirect(url_for('login'))
+    current_user = session['user']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT target_username FROM messages WHERE id = %s", (msg_id,))
+    msg = cursor.fetchone()
+    if msg and msg[0] == current_user:
+        cursor.execute("DELETE FROM messages WHERE id = %s", (msg_id,))
+        conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for('user_profile', username=current_user))
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    if 'user' not in session: return redirect(url_for('login'))
+    current_user = session['user']
+    bio = request.form.get('bio', '').strip()
+    file = request.files.get('profile_img')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if file and allowed_file(file.filename):
+        filename = secure_filename(f"{current_user}_{file.filename}")
+        file.save(os.path.join(upload_dir, filename))
+        cursor.execute("UPDATE users SET bio = %s, profile_img = %s WHERE username = %s", (bio, filename, current_user))
+    else:
+        cursor.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, current_user))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for('user_profile', username=current_user))
+
+@app.route('/static/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(upload_dir, filename)
 
 @app.route('/logout')
 def logout():
     session.pop('user', None)
-    return redirect(url_for('home'))
-
-@app.route('/user/<username>')
-def profile(username):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute('SELECT * FROM users WHERE username = %s', (username,))
-    target_user = cur.fetchone()
-    if not target_user:
-        cur.close()
-        conn.close()
-        return "존재하지 않는 유저입니다.", 404
-        
-    cur.execute('SELECT * FROM asked WHERE target_user = %s ORDER BY id DESC', (username,))
-    questions = cur.fetchall()
-    
-    cur.execute('SELECT COUNT(*) FROM follows WHERE following_id = %s', (target_user['id'],))
-    followers_count = cur.fetchone()[0]
-    cur.execute('SELECT COUNT(*) FROM follows WHERE follower_id = %s', (target_user['id'],))
-    following_count = cur.fetchone()[0]
-    
-    is_following = False
-    if 'user' in session and session['user'] != username:
-        cur.execute('SELECT id FROM users WHERE username = %s', (session['user'],))
-        me = cur.fetchone()
-        if me:
-            cur.execute('SELECT * FROM follows WHERE follower_id = %s AND following_id = %s', (me['id'], target_user['id']))
-            if cur.fetchone():
-                is_following = True
-                
-    cur.close()
-    conn.close()
-    
-    processed_questions = []
-    for q in questions:
-        q_dict = dict(q)
-        q_dict['question'] = convert_youtube_links(q_dict['question'])
-        q_dict['answer'] = convert_youtube_links(q_dict['answer'])
-        processed_questions.append(q_dict)
-        
-    return render_template('user.html', target_user=target_user, questions=processed_questions, 
-                           followers_count=followers_count, following_count=following_count, is_following=is_following)
-
-@app.route('/update_profile', methods=['POST'])
-def update_profile():
-    if 'user' not in session:
-        return redirect(url_for('home'))
-    bio = request.form.get('bio', '').strip()
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('UPDATE users SET bio = %s WHERE username = %s', (bio, session['user']))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return redirect(url_for('profile', username=session['user']))
-
-@app.route('/follow/<username>', methods=['POST'])
-def follow(username):
-    if 'user' not in session:
-        return redirect(url_for('home'))
-    if session['user'] == username:
-        return "자기 자신을 팔로우할 수 없습니다."
-        
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT id FROM users WHERE username = %s', (session['user'],))
-    me = cur.fetchone()
-    cur.execute('SELECT id FROM users WHERE username = %s', (username,))
-    target = cur.fetchone()
-    
-    if me and target:
-        try:
-            cur.execute('INSERT INTO follows (follower_id, following_id) VALUES (%s, %s)', (me['id'], target['id']))
-            conn.commit()
-        except psycopg2.errors.UniqueViolation:
-            conn.rollback()
-            cur.execute('DELETE FROM follows WHERE follower_id = %s AND following_id = %s', (me['id'], target['id']))
-            conn.commit()
-    cur.close()
-    conn.close()
-    return redirect(url_for('profile', username=username))
-
-@app.route('/ask/<username>', methods=['POST'])
-def ask(username):
-    question = request.form.get('question', '').strip()
-    if not question:
-        return "질문을 입력해주세요."
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO asked (target_user, question) VALUES (%s, %s)', (username, question))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return redirect(url_for('profile', username=username))
-
-@app.route('/answer/<int:q_id>', methods=['POST'])
-def answer(q_id):
-    if 'user' not in session:
-        return redirect(url_for('home'))
-    answer_text = request.form.get('answer', '').strip()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('UPDATE asked SET answer = %s WHERE id = %s AND target_user = %s', (answer_text, q_id, session['user']))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return redirect(url_for('profile', username=session['user']))
-
-@app.route('/delete_ask/<int:q_id>', methods=['POST'])
-def delete_ask(q_id):
-    if 'user' not in session:
-        return redirect(url_for('home'))
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('DELETE FROM asked WHERE id = %s AND target_user = %s', (q_id, session['user']))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return redirect(url_for('profile', username=session['user']))
-
-@app.route('/search')
-def search():
-    query = request.args.get('query', '').strip()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT username, bio FROM users WHERE username LIKE %s', (f"%{query}%",))
-    results = cur.fetchall()
-    cur.close()
-    conn.close()
-    return render_template('search_results.html', results=results, query=query)
-
-@app.route('/group/create', methods=['GET', 'POST'])
-def create_group():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    if request.method == 'POST':
-        room_name = request.form.get('room_name', '').strip()
-        if not room_name:
-            return "방 이름을 입력해주세요."
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('INSERT INTO group_rooms (room_name, created_by) VALUES (%s, %s)', (room_name, session['user']))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return redirect(url_for('home'))
-    return render_template('create_group.html')
-
-@app.theme = None
-@app.route('/group/chat/<int:room_id>')
-def group_chat(room_id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT room_name FROM group_rooms WHERE id = %s', (room_id,))
-    room = cur.fetchone()
-    cur.close()
-    conn.close()
-    if not room:
-        return "존재하지 않는 단톡방입니다.", 404
-    return render_template('chat.html', room_type='group', room_id=str(room_id), target_name=room['room_name'])
-
-@app.route('/chat/dm/<target_username>')
-def chat_dm(target_username):
-    if 'user' not in session:
-        return redirect(url_for('home'))
-    me = session['user']
-    room_id = "-".join(sorted([me, target_username]))
-    return render_template('chat.html', room_type='dm', room_id=room_id, target_name=target_username)
-
-@app.route('/api/messages/<room_type>/<room_id>')
-def get_messages(room_type, room_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT sender, message FROM messages WHERE room_type = %s AND room_id = %s ORDER BY id ASC', (room_type, room_id))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    messages = []
-    for r in rows:
-        msg_html = convert_youtube_links(r['message'])
-        messages.append({'sender': r['sender'], 'message': msg_html})
-    return jsonify(messages)
-
-@app.route('/api/send_message', methods=['POST'])
-def send_message():
-    if 'user' not in session:
-        return jsonify({'status': 'fail'}), 403
-        
-    room_type = request.form.get('room_type')
-    room_id = request.form.get('room_id')
-    message = request.form.get('message', '').strip()
-    
-    if not message:
-        return jsonify({'status': 'fail', 'reason': 'empty'}), 400
-        
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO messages (room_type, room_id, sender, message) VALUES (%s, %s, %s, %s)',
-                (room_type, room_id, session['user'], message))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'success'})
-
-@app.route('/api/check_notifications')
-def check_notifications():
-    return jsonify({'new_dms': 0, 'new_groups': 0})
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
