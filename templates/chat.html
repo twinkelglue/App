@@ -22,7 +22,7 @@
         <div class="chat-header">
             {{ target_name }}
             <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 홈화면</a>
-            <span style="font-size:0.75rem; color:#adff2f; margin-left:5px;">● 실시간 라이브</span>
+            <span style="font-size:0.75rem; color:#adff2f; margin-left:5px;">● LIVE</span>
         </div>
         
         <div class="chat-box" id="chat-box-div">
@@ -44,7 +44,7 @@
 
     <script>
         const chatBox = document.getElementById('chat-box-div');
-        chatBox.scrollTop = chatBox.scrollHeight;
+        chatBox.scrollTop = chatBox.scrollHeight; // 진입 시 자동 최하단 스크롤
 
         function fetchMessages() {
             fetch('/api/chat_history/{{ room_type }}/{{ room_id }}')
@@ -57,14 +57,14 @@
                         html += `<div class="bubble ${isMe ? 'me' : 'other'}">${chat.message}</div>`;
                     });
                     
-                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 50);
+                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 60);
                     chatBox.innerHTML = html;
                     if(isBottom) {
-                        chatBox.scrollTop = chatBox.scrollHeight;
+                        chatBox.scrollTop = chatBox.scrollHeight; // 새 톡 오면 자동 카톡식 스크롤 하강
                     }
-                }).catch(e => console.log("채팅방 동기화 대기중"));
+                }).catch(e => console.log("동기화 홀딩..."));
         }
-        setInterval(fetchMessages, 3000);
+        setInterval(fetchMessages, 3000); // 3초 주기 강제 라이브 싱크
     </script>
 </body>
 </html>
