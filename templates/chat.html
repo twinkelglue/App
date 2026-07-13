@@ -2,106 +2,25 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatClub Room</title>
+    <title>ChatRoom</title>
     <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { 
-            background-color: #fafafa; 
-            color: #262626; 
-            font-family: 'Pretendard', sans-serif; 
-            margin: 0; 
-            padding: 20px;
-        }
-        .chat-container { 
-            max-width: 420px; 
-            margin: 30px auto; 
-            background: #ffffff; 
-            border: 1px solid #dbdbdb; 
-            border-radius: 16px; 
-            display: flex; 
-            flex-direction: column; 
-            height: 80vh;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-            overflow: hidden;
-        }
-        .chat-header { 
-            padding: 16px; 
-            border-bottom: 1px solid #dbdbdb; 
-            font-weight: 700; 
-            font-size: 1.1rem; 
-            text-align: center;
-            background: #ffffff;
-        }
-        .chat-messages { 
-            flex: 1; 
-            padding: 16px; 
-            overflow-y: auto; 
-            background: #ffffff;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .msg-row { display: flex; flex-direction: column; margin-bottom: 4px; }
-        .msg-sender { font-size: 0.8rem; color: #737373; margin-bottom: 2px; font-weight: 600; }
-        .msg-bubble { 
-            display: inline-block; 
-            max-width: 75%; 
-            padding: 10px 14px; 
-            border-radius: 18px; 
-            font-size: 0.95rem; 
-            line-height: 1.4;
-            word-break: break-all;
-        }
+        body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; margin: 0; padding: 20px; }
+        .chat-container { max-width: 450px; margin: 20px auto; background: #151515; border: 1px solid #222; border-radius: 20px; display: flex; flex-direction: column; height: 80vh; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; }
+        .chat-header { padding: 15px; border-bottom: 1px solid #222; font-weight: bold; font-size: 1.1rem; text-align: center; color: #adff2f; background: #151515; }
+        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #111; display: flex; flex-direction: column; gap: 12px; }
+        .msg-row { display: flex; flex-direction: column; margin-bottom: 2px; }
+        .msg-sender { font-size: 0.75rem; color: #888; margin-bottom: 2px; font-weight: bold; }
+        .msg-bubble { display: inline-block; max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 0.95rem; line-height: 1.4; word-break: break-all; }
         .msg-row.me { align-items: flex-end; }
-        .msg-row.me .msg-bubble { background: #0095f6; color: #ffffff; } 
+        .msg-row.me .msg-bubble { background: #adff2f; color: #000; font-weight: 500; }
         .msg-row.other { align-items: flex-start; }
-        .msg-row.other .msg-bubble { background: #efefef; color: #262626; } 
-        
-        /* 사진 기능용 입력창 레이아웃 수정 */
-        .chat-input-area { 
-            padding: 12px; 
-            border-top: 1px solid #dbdbdb; 
-            display: flex; 
-            align-items: center;
-            gap: 8px; 
-            background: #ffffff;
-        }
-        /* 심플한 카메라 업로드 버튼 스타일 */
-        .image-upload-btn {
-            cursor: pointer;
-            font-size: 1.4rem;
-            padding: 4px 8px;
-            color: #262626;
-            display: flex;
-            align-items: center;
-            transition: opacity 0.2s;
-        }
-        .image-upload-btn:hover { opacity: 0.7; }
-        
-        .chat-input-area input[type="text"] { 
-            flex: 1; 
-            padding: 12px 16px; 
-            border: 1px solid #dbdbdb; 
-            border-radius: 20px; 
-            outline: none; 
-            font-size: 0.95rem;
-            background: #fafafa;
-        }
-        .chat-input-area button.send-btn { 
-            background: #000000; 
-            color: #fff; 
-            border: none; 
-            padding: 12px 18px; 
-            border-radius: 20px; 
-            font-weight: 600; 
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-        .back-link { display: block; text-align: center; margin-top: 15px; color: #737373; font-size: 0.9rem; text-decoration: none; }
-        
-        /* 이미지 미리보기 팝업 알림 스타일 */
-        #fileCheck { font-size: 0.8rem; color: #0095f6; display: none; margin-left: 5px; font-weight: bold; }
+        .msg-row.other .msg-bubble { background: #222; color: #fff; border: 1px solid #333; }
+        .chat-input-area { padding: 12px; border-top: 1px solid #222; display: flex; align-items: center; gap: 8px; background: #151515; }
+        .chat-input-area input[type="text"] { flex: 1; padding: 10px 14px; border: 1px solid #333; border-radius: 20px; outline: none; font-size: 0.95rem; background: #222; color: #fff; }
+        .chat-input-area button { background: #adff2f; color: #000; border: none; padding: 10px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+        .back-link { display: block; text-align: center; margin-top: 15px; color: #666; font-size: 0.9rem; text-decoration: none; }
+        .back-link:hover { color: #fff; }
     </style>
 </head>
 <body>
@@ -110,30 +29,16 @@
         <div class="chat-messages" id="chatBox"></div>
         
         <div class="chat-input-area">
-            <label for="imgInput" class="image-upload-btn">📷<span id="fileCheck">✓</span></label>
-            <input type="file" id="imgInput" accept="image/*" style="display: none;" onchange="onFileSelected()">
-            
-            <input type="text" id="msgInput" placeholder="메시지 보내기..." onkeypress="if(event.keyCode==13) sendMsg()">
-            <button class="send-btn" onclick="sendMsg()">전송</button>
+            <input type="text" id="msgInput" placeholder="메시지를 입력하세요..." onkeypress="if(event.keyCode==13) sendMsg()">
+            <button onclick="sendMsg()">전송</button>
         </div>
     </div>
-    <a href="/" class="back-link">⬅️ ChatClub 홈으로 탈출</a>
+    <a href="/" class="back-link">🏠 ChatClub 홈으로 돌아가기</a>
 
     <script>
         const roomType = "{{ room_type }}";
         const roomId = "{{ room_id }}";
         const myName = "{{ session.get('user') }}";
-
-        // 파일 선택 시 체크 표시 띄우기
-        function onFileSelected() {
-            const fileInput = document.getElementById('imgInput');
-            const check = document.getElementById('fileCheck');
-            if(fileInput.files.length > 0) {
-                check.style.display = 'inline';
-            } else {
-                check.style.display = 'none';
-            }
-        }
 
         function loadMessages() {
             fetch(`/api/messages/${roomType}/${roomId}`)
@@ -150,7 +55,6 @@
                             </div>
                         `;
                     });
-                    // 스크롤 꼬임 방지
                     const wasAtBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 50;
                     box.innerHTML = html;
                     if(wasAtBottom) {
@@ -161,27 +65,19 @@
 
         function sendMsg() {
             const inp = document.getElementById('msgInput');
-            const fileInput = document.getElementById('imgInput');
             const txt = inp.value.trim();
-            
-            // 글자도 없고 선택한 사진도 없으면 전송 안 함
-            if(!txt && fileInput.files.length === 0) return;
+            if(!txt) return;
 
             const formData = new FormData();
             formData.append('room_type', roomType);
             formData.append('room_id', roomId);
             formData.append('message', txt);
-            if(fileInput.files.length > 0) {
-                formData.append('image', fileInput.files[0]);
-            }
 
             fetch('/api/send_message', { method: 'POST', body: formData })
                 .then(res => res.json())
                 .then(data => {
                     if(data.status === 'success') {
                         inp.value = '';
-                        fileInput.value = ''; // 파일 비우기
-                        document.getElementById('fileCheck').style.display = 'none';
                         loadMessages();
                     }
                 });
