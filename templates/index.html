@@ -70,14 +70,13 @@
                 .then(res => res.json())
                 .then(data => {
                     if(data.new_dms > 0 || data.new_groups > 0) {
-                        // 상대방이 갠톡을 쐈거나 단톡방 메시지를 보내면 목록을 즉시 리프레시!
                         location.reload();
                     }
-                }).catch(e => console.log("알림 연동 감지중..."));
+                }).catch(e => console.log("동기화 감지중..."));
         }
         {% if session.get('user') %}
-            setInterval(checkNotiAndRefresh, 3000); // 3초마다 카톡방 신규 목록 체크
+            setInterval(checkNotiAndRefresh, 3000);
+        </script>
         {% endif %}
-    </script>
 </body>
 </html>
