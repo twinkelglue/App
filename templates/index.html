@@ -2,189 +2,51 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatClub</title>
-    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { 
-            background-color: #fafafa; /* 인스타 느낌의 화사하고 깔끔한 밝은 배경 */
-            color: #262626; 
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; 
-            padding: 20px; 
-            margin: 0; 
-        }
-        .container { 
-            max-width: 420px; 
-            margin: 40px auto; 
-            background: #ffffff; 
-            padding: 30px 24px; 
-            border-radius: 16px; 
-            border: 1px solid #dbdbdb; /* 인스타 특유의 얇은 구분 테두리 */
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
-        }
-        /* 네온초록 탈피, 스레드 스타일의 미니멀 블랙 볼드 로고 */
-        h1 { 
-            font-size: 2.2rem; 
-            color: #000000; 
-            font-weight: 800; 
-            letter-spacing: -1px; 
-            margin-bottom: 30px; 
-            text-align: center; 
-        }
-        input[type="text"] { 
-            width: 100%; 
-            padding: 14px 20px; 
-            border: 1px solid #dbdbdb; 
-            border-radius: 12px; 
-            background: #fafafa; 
-            color: #262626; 
-            font-size: 0.95rem; 
-            box-sizing: border-box; 
-            outline: none; 
-            transition: all 0.2s ease; 
-        }
-        input[type="text"]:focus { 
-            border-color: #a8a8a8; 
-            background: #ffffff;
-        }
-        /* 인스타 감성의 세련된 단색 솔리드 버튼 */
-        button { 
-            background: #000000; 
-            color: #ffffff; 
-            border: none; 
-            padding: 14px 25px; 
-            font-weight: 600; 
-            border-radius: 12px; 
-            cursor: pointer; 
-            font-size: 0.95rem; 
-            width: 100%; 
-            margin-top: 10px; 
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: #262626;
-        }
-        a { 
-            color: #00376b; /* 인스타 링크용 시그니처 블루 */
-            text-decoration: none; 
-            font-size: 0.9rem; 
-        }
-        .btn-link { 
-            display: inline-block; 
-            background: #ffffff; 
-            color: #262626; 
-            padding: 12px; 
-            border: 1px solid #dbdbdb;
-            border-radius: 12px; 
-            width: 100%; 
-            text-align: center; 
-            box-sizing: border-box; 
-            margin-top: 8px; 
-            font-weight: 600; 
-            font-size: 0.95rem;
-            transition: all 0.2s;
-        }
-        .btn-link:hover {
-            background: #fafafa;
-            border-color: #a8a8a8;
-        }
-        .btn-primary {
-            background: #0095f6; /* 인스타 포인트 블루 버튼 */
-            color: #fff;
-            border: none;
-        }
-        .btn-primary:hover {
-            background: #1877f2;
-        }
-        h3 {
-            font-size: 1.1rem;
-            font-weight: 700;
-            margin-top: 28px;
-            margin-bottom: 12px;
-            color: #262626;
-        }
-        .room-item { 
-            background: #ffffff; 
-            padding: 14px 18px; 
-            border-radius: 12px; 
-            margin-bottom: 8px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            border: 1px solid #efefef;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.01);
-        }
-        .room-item span {
-            font-size: 0.95rem;
-            color: #262626;
-        }
+        body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; text-align: center; padding-top: 100px; }
+        h1 { color: #adff2f; font-size: 3rem; text-shadow: 0 0 10px #adff2f; }
+        .btn { display: inline-block; padding: 12px 24px; margin: 10px; border: 2px solid #adff2f; color: #adff2f; text-decoration: none; font-weight: bold; border-radius: 30px; background: transparent; transition: 0.3s; cursor: pointer; }
+        .btn:hover { background: #adff2f; color: #000; box-shadow: 0 0 15px #adff2f; }
+        .container { max-width: 500px; margin: 0 auto; background: #151515; padding: 30px; border-radius: 20px; border: 1px solid #333; }
+        input[type="text"], input[type="password"] { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #333; background: #222; color: #fff; border-radius: 5px; }
+        .list-item { display: block; padding: 10px; margin: 5px 0; background: #222; color: #fff; text-decoration: none; border-radius: 5px; }
+        .list-item:hover { background: #333; color: #adff2f; }
     </style>
 </head>
 <body>
+    <h1>ChatClub</h1>
     <div class="container">
-        <h1>ChatClub</h1>
-        
         {% if session.get('user') %}
-            <p style="color: #737373; text-align: center; font-size: 0.95rem; margin-bottom: 20px;">
-                🟢 현재 <b style="color:#000;">{{ session['user'] }}</b>님으로 로그인됨
-            </p>
-            <a href="/user/{{ session['user'] }}" class="btn-link btn-primary">내 프로필 홈 가기</a>
-            <a href="/group/create" class="btn-link">➕ 새 그룹 단톡방 생성</a>
+            <p><span style="color:#adff2f; font-weight:bold;">{{ session['user'] }}</span>님 환영합니다!</p>
+            <a href="/user/{{ session['user'] }}" class="btn">내 에스크 홈</a>
+            <a href="/logout" class="btn" style="border-color:#ff4757; color:#ff4757;">로그아웃</a>
+            <hr style="border-color:#333; margin:200px 0 20px 0;">
             
-            <h3>💬 1:1 디엠 보관함</h3>
-            {% if my_dms %}
-                {% for other in my_dms %}
-                    <div class="room-item">
-                        <span>👤 <b>{{ other }}</b>님과의 대화</span>
-                        <a href="/chat/dm/{{ other }}" style="color:#0095f6; font-weight:700;">채팅하기</a>
-                    </div>
-                {% endfor %}
+            <h3 style="color:#adff2f;">내 DM 대화방</h3>
+            {% for dm in my_dms %}
+                <a href="/chat/dm/{{ dm }}" class="list-item">💬 {{ dm }}님과의 대화</a>
             {% else %}
-                <p style="color:#8e8e8e; font-size:0.85rem; text-align:center; padding: 10px 0;">활성화된 1:1 대화방이 없습니다.</p>
-            {% endif %}
+                <p style="color:#666;">참여 중인 DM이 없습니다.</p>
+            {% endfor %}
 
-            <h3>👥 그룹 채널</h3>
-            {% if my_rooms %}
-                {% for room in my_rooms %}
-                    <div class="room-item">
-                        <span>🔒 {{ room[1] }}</span>
-                        <a href="/group/chat/{{ room[0] }}" style="color:#0095f6; font-weight:700;">입장</a>
-                    </div>
-                {% endfor %}
+            <h3 style="color:#adff2f; margin-top:30px;">그룹 단톡방 목록</h3>
+            <a href="/group/create" class="btn" style="font-size:0.8rem; padding:6px 12px;">+ 방 만들기</a>
+            {% for room in my_rooms %}
+                <a href="/group/chat/{{ room['id'] }}" class="list-item">👥 {{ room['room_name'] }}</a>
             {% else %}
-                <p style="color:#8e8e8e; font-size:0.85rem; text-align:center; padding: 10px 0;">참여 중인 그룹 단톡방이 없습니다.</p>
-            {% endif %}
-            
-            <br><a href="/logout" style="color:#ed4956; display:block; text-align:center; margin-top:20px; font-weight:700; font-size: 0.9rem;">로그아웃</a>
+                <p style="color:#666;">개설된 단톡방이 없습니다.</p>
+            {% endfor %}
         {% else %}
-            <div style="display:flex; gap:10px; margin-bottom:20px;">
-                <a href="/login" class="btn-link" style="flex:1;">로그인</a>
-                <a href="/register" class="btn-link btn-primary" style="flex:1;">회원가입</a>
-            </div>
+            <p>익명 질문과 실시간 채팅을 한 번에!</p>
+            <form action="/login" method="POST">
+                <input type="text" name="username" placeholder="아이디" required><br>
+                <input type="password" name="password" placeholder="비밀번호" required><br>
+                <button type="submit" class="btn">로그인</button>
+            </form>
+            <a href="/register" style="color:#adff2f; display:block; margin-top:15px; text-decoration:none;">아직 계정이 없으신가요? 회원가입</a>
         {% endif %}
-        
-        <hr style="border:0; border-top:1px solid #dbdbdb; margin:30px 0;">
-        
-        <h3>🔍 친구 검색</h3>
-        <form action="/search" method="get">
-            <input type="text" name="query" placeholder="찾고 싶은 아이디 검색...">
-            <button type="submit">검색</button>
-        </form>
     </div>
-
-    <script>
-        function checkNotiAndRefresh() {
-            fetch('/api/check_notifications')
-                .then(res => res.json())
-                .then(data => {
-                    if(data.new_dms > 0 || data.new_groups > 0) {
-                        location.reload();
-                    }
-                }).catch(e => console.log("동기화 중..."));
-        }
-        {% if session.get('user') %}
-            setInterval(checkNotiAndRefresh, 3000);
-        {% endif %}
-    </script>
 </body>
 </html>
