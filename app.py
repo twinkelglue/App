@@ -13,7 +13,7 @@ def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
     return conn
 
-# 데이터베이스 테이블 초기화 (기존 순정 버전으로 원상복구)
+# 데이터베이스 테이블 초기화
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -50,7 +50,7 @@ def init_db():
         )
     ''')
     
-    # 4. 채팅 메시지 테이블 (사진 기능 완벽 제거)
+    # 4. 채팅 메시지 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -137,6 +137,7 @@ def register():
             conn.close()
     return render_template('register.html')
 
+# 🎯 로그인 창이 안 열리던 버그를 login.html 렌더링으로 완벽 수정!
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -155,7 +156,7 @@ def login():
             return redirect(url_for('profile', username=username))
         else:
             return "아이디 또는 비밀번호가 틀렸습니다."
-    return render_template('index.html')
+    return render_template('login.html')
 
 @app.route('/logout')
 def logout():
