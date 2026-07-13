@@ -5,20 +5,18 @@ import psycopg2
 from psycopg2.extras import DictCursor
 
 app = Flask(__name__)
-app.secret_key = 'your_very_secret_key_here'
+# 세션 직렬화 및 보안을 위한 고유 키 설정
+app.secret_key = 'chatclub_ultra_secure_secret_key_fixed'
 
-# 데이터베이스 연결 함수 (Neon Postgres)
 def get_db_connection():
     DATABASE_URL = os.environ.get('DATABASE_URL')
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
-    return conn
+    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
 
-# 데이터베이스 테이블 초기화
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블 (user.html에서 요구하는 bio, profile_pic 완벽 보존)
+    # users 테이블 (기존 bio, profile_pic 필드 완벽 보존)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -29,7 +27,6 @@ def init_db():
         )
     ''')
     
-    # 2. 팔로우 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS follows (
             id SERIAL PRIMARY KEY,
@@ -39,7 +36,6 @@ def init_db():
         )
     ''')
     
-    # 3. 에스크 질문 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS asked (
             id SERIAL PRIMARY KEY,
@@ -50,7 +46,6 @@ def init_db():
         )
     ''')
     
-    # 4. 채팅 메시지 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -62,7 +57,6 @@ def init_db():
         )
     ''')
 
-    # 5. 그룹 단톡방 정보 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS group_rooms (
             id SERIAL PRIMARY KEY,
@@ -77,7 +71,6 @@ def init_db():
 
 init_db()
 
-# 유튜브 링크 자동 변환 헬퍼 함수
 def convert_youtube_links(text):
     if not text:
         return ""
@@ -91,7 +84,6 @@ def home():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 내가 대화한 적 있는 DM 상대방들 가져오기
         cur.execute('''
             SELECT DISTINCT room_id FROM messages 
             WHERE room_type = 'dm' AND room_id LIKE %s
@@ -105,7 +97,6 @@ def home():
                 if other not in my_dms:
                     my_dms.append(other)
                     
-        # 모든 그룹 단톡방 리스트 가져오기
         cur.execute('SELECT id, room_name FROM group_rooms')
         my_rooms = cur.fetchall()
         
@@ -127,7 +118,8 @@ def register():
         try:
             cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, password))
             conn.commit()
-            session['user'] = username
+            # 세션 꼬임 방지를 위해 순수 문자열(str) 형태로 저장
+            session['user'] = str(username)
             return redirect(url_for('profile', username=username))
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
@@ -151,8 +143,9 @@ def login():
         conn.close()
         
         if user:
-            session['user'] = username
-            return redirect(url_for('profile', username=username))
+            # ⭐ [핵심 버그 수정] DictRow 객체가 아닌 순수 문자열 변수를 세션에 등록해 500 에러 원천 차단
+            session['user'] = str(user['username'])
+            return redirect(url_for('profile', username=session['user']))
         else:
             return "아이디 또는 비밀번호가 틀렸습니다."
     return render_template('login.html')
@@ -168,12 +161,15 @@ def profile(username):
     cur = conn.cursor()
     
     cur.execute('SELECT * FROM users WHERE username = %s', (username,))
-    target_user = cur.fetchone()
-    if not target_user:
+    row = cur.fetchone()
+    if not row:
         cur.close()
         conn.close()
         return "존재하지 않는 유저입니다.", 404
         
+    # 템플릿 연동 에러 방지를 위해 확실하게 일반 dict로 변환
+    target_user = dict(row)
+    
     cur.execute('SELECT * FROM asked WHERE target_user = %s ORDER BY id DESC', (username,))
     questions = cur.fetchall()
     
