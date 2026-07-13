@@ -3,7 +3,6 @@ import re
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import psycopg2
 from psycopg2.extras import DictCursor
-import requests
 
 app = Flask(__name__)
 app.secret_key = 'your_very_secret_key_here'
@@ -14,7 +13,7 @@ def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
     return conn
 
-# 데이터베이스 테이블 초기화 (채팅방 이미지 보존용 image_url 필드 완벽 반영)
+# 데이터베이스 테이블 초기화 (기존 순정 버전으로 원상복구)
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -51,7 +50,7 @@ def init_db():
         )
     ''')
     
-    # 4. 채팅 메시지 테이블 (사진 영구 저장 공간 image_url 완벽 포함)
+    # 4. 채팅 메시지 테이블 (사진 기능 완벽 제거)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -59,12 +58,11 @@ def init_db():
             room_id TEXT NOT NULL,     
             sender TEXT NOT NULL,
             message TEXT DEFAULT '',
-            image_url TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
-    # 5. 그룹 단톡방 정보 테이블 (누락방지 추가)
+    # 5. 그룹 단톡방 정보 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS group_rooms (
             id SERIAL PRIMARY KEY,
@@ -87,23 +85,9 @@ def convert_youtube_links(text):
     replacement = r'<br><iframe width="100%" height="200" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>'
     return re.sub(pattern, replacement, text)
 
-# Imgur 외부 이미지 금고 업로드 함수 (사진 터짐 방지)
-def upload_to_imgur(file_storage):
-    try:
-        headers = {"Authorization": "Client-ID 54401259d9975e9"}
-        files = {"image": file_storage.read()}
-        response = requests.post("https://api.imgur.com/3/image", headers=headers, files=files)
-        data = response.json()
-        if data.get("success"):
-            return data["data"]["link"]
-    except Exception as e:
-        print("Imgur 업로드 오류:", e)
-    return None
-
 @app.route('/')
 def home():
     if 'user' in session:
-        # 메인 홈에서 내가 참여중인 갠톡방/단톡방 리스트를 index.html에 뿌려주기 위한 데이터 전송
         conn = get_db_connection()
         cur = conn.cursor()
         
@@ -225,18 +209,10 @@ def update_profile():
     if 'user' not in session:
         return redirect(url_for('home'))
     bio = request.form.get('bio', '').strip()
-    file = request.files.get('profile_pic')
     
-    profile_pic_url = None
-    if file and file.filename != '':
-        profile_pic_url = upload_to_imgur(file)
-        
     conn = get_db_connection()
     cur = conn.cursor()
-    if profile_pic_url:
-        cur.execute('UPDATE users SET bio = %s, profile_pic = %s WHERE username = %s', (bio, profile_pic_url, session['user']))
-    else:
-        cur.execute('UPDATE users SET bio = %s WHERE username = %s', (bio, session['user']))
+    cur.execute('UPDATE users SET bio = %s WHERE username = %s', (bio, session['user']))
     conn.commit()
     cur.close()
     conn.close()
@@ -306,7 +282,6 @@ def delete_ask(q_id):
     conn.close()
     return redirect(url_for('profile', username=session['user']))
 
-# --- 🔍 저격 유저 검색 라우터 (누락방지 복구!) ---
 @app.route('/search')
 def search():
     query = request.args.get('query', '').strip()
@@ -318,7 +293,6 @@ def search():
     conn.close()
     return render_template('search_results.html', results=results, query=query)
 
-# --- 👥 그룹 단톡방 생성 및 오픈 입장 라우터 (누락방지 복구!) ---
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
     if 'user' not in session:
@@ -350,7 +324,6 @@ def group_chat(room_id):
         return "존재하지 않는 단톡방입니다.", 404
     return render_template('chat.html', room_type='group', room_id=str(room_id), target_name=room['room_name'])
 
-# --- 🚀 실시간 메시지 API 및 자동 알림 라우터 ---
 @app.route('/chat/dm/<target_username>')
 def chat_dm(target_username):
     if 'user' not in session:
@@ -363,7 +336,7 @@ def chat_dm(target_username):
 def get_messages(room_type, room_id):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT sender, message, image_url FROM messages WHERE room_type = %s AND room_id = %s ORDER BY id ASC', (room_type, room_id))
+    cur.execute('SELECT sender, message FROM messages WHERE room_type = %s AND room_id = %s ORDER BY id ASC', (room_type, room_id))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -371,8 +344,6 @@ def get_messages(room_type, room_id):
     messages = []
     for r in rows:
         msg_html = convert_youtube_links(r['message'])
-        if r['image_url']:
-            msg_html += f'<br><img src="{r["image_url"]}" style="max-width:200px; border-radius:10px; margin-top:5px;">'
         messages.append({'sender': r['sender'], 'message': msg_html})
     return jsonify(messages)
 
@@ -384,19 +355,14 @@ def send_message():
     room_type = request.form.get('room_type')
     room_id = request.form.get('room_id')
     message = request.form.get('message', '').strip()
-    file = request.files.get('image')
     
-    image_url = ''
-    if file and file.filename != '':
-        image_url = upload_to_imgur(file) or ''
-        
-    if not message and not image_url:
+    if not message:
         return jsonify({'status': 'fail', 'reason': 'empty'}), 400
         
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('INSERT INTO messages (room_type, room_id, sender, message, image_url) VALUES (%s, %s, %s, %s, %s)',
-                (room_type, room_id, session['user'], message, image_url))
+    cur.execute('INSERT INTO messages (room_type, room_id, sender, message) VALUES (%s, %s, %s, %s)',
+                (room_type, room_id, session['user'], message))
     conn.commit()
     cur.close()
     conn.close()
@@ -404,7 +370,6 @@ def send_message():
 
 @app.route('/api/check_notifications')
 def check_notifications():
-    # 실시간 알림 새로고침 감지용 빈 라우터 에러 방지용 추가
     return jsonify({'new_dms': 0, 'new_groups': 0})
 
 if __name__ == '__main__':
