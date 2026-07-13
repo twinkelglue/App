@@ -12,9 +12,12 @@
         .bubble { margin-bottom: 12px; max-width: 75%; padding: 12px; border-radius: 15px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
         .bubble.me { background: #adff2f; color: #000; margin-left: auto; border-top-right-radius: 2px; }
         .bubble.other { background: #252535; color: #fff; margin-right: auto; border-top-left-radius: 2px; }
-        .chat-footer { padding: 10px; background: #1a1a24; display: flex; gap: 8px; border-top: 1px solid #2e2e3e; }
+        .chat-footer { padding: 10px; background: #1a1a24; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2e2e3e; }
+        .input-row { display: flex; gap: 8px; }
         input[type="text"] { flex: 1; padding: 12px; border-radius: 25px; border: 2px solid #2e2e3e; background: #252535; color: white; outline: none; }
+        .file-label { background: #252535; color: #fff; border: 2px solid #2e2e3e; padding: 10px 15px; font-weight: bold; border-radius: 25px; cursor: pointer; text-align: center; font-size: 0.9rem; }
         button { background: #adff2f; color: #000; border: none; padding: 0 20px; font-weight: bold; border-radius: 25px; cursor: pointer; }
+        .chat-img-preview { max-width: 100%; border-radius: 10px; margin-top: 5px; display: block; }
     </style>
 </head>
 <body>
@@ -31,20 +34,32 @@
                     {{ chat[0] }}
                 </div>
                 <div class="bubble {% if chat[0] == session['user'] %}me{% else %}other{% endif %}">
-                    {{ chat[1] }}
+                    <!-- 메시지 텍스트 렌더링 (유튜브 아이프레임 포함 가능하므로 safe 필터 적용) -->
+                    {% if chat[1] %}{{ chat[1]|safe }}{% endif %}
+                    
+                    <!-- 공유된 사진이 있는 경우 렌더링 -->
+                    {% if chat[2] %}
+                        <img src="/static/{{ chat[2] }}" class="chat-img-preview" alt="공유 사진">
+                    {% endif %}
                 </div>
             {% endfor %}
         </div>
         
-        <form class="chat-footer" method="post" action="">
-            <input type="text" name="message" id="msg-input" placeholder="메시지 입력 창..." required autocomplete="off" autofocus>
-            <button type="submit">전송</button>
+        <form class="chat-footer" method="post" action="" enctype="multipart/form-data">
+            <div style="display: flex; gap: 5px; align-items: center;">
+                <label for="chat_img" class="file-label">📷 사진첨부</label>
+                <input type="file" name="chat_img" id="chat_img" accept="image/*" style="display: none;" onchange="alert('사진이 선택되었습니다!')">
+            </div>
+            <div class="input-row">
+                <input type="text" name="message" id="msg-input" placeholder="메시지 또는 유튜브 링크 입력..." autocomplete="off" autofocus>
+                <button type="submit">전송</button>
+            </div>
         </form>
     </div>
 
     <script>
         const chatBox = document.getElementById('chat-box-div');
-        chatBox.scrollTop = chatBox.scrollHeight; // 진입 시 자동 최하단 스크롤
+        chatBox.scrollTop = chatBox.scrollHeight;
 
         function fetchMessages() {
             fetch('/api/chat_history/{{ room_type }}/{{ room_id }}')
@@ -54,17 +69,24 @@
                     data.forEach(chat => {
                         let isMe = (chat.sender === "{{ session['user'] }}");
                         html += `<div style="font-size:0.75rem; color:#888; text-align: ${isMe ? 'right' : 'left'}; margin-bottom:2px;">${chat.sender}</div>`;
-                        html += `<div class="bubble ${isMe ? 'me' : 'other'}">${chat.message}</div>`;
+                        html += `<div class="bubble ${isMe ? 'me' : 'other'}">`;
+                        if(chat.message) {
+                            html += chat.message;
+                        }
+                        if(chat.file_path) {
+                            html += `<img src="/static/${chat.file_path}" class="chat-img-preview" alt="공유 사진">`;
+                        }
+                        html += `</div>`;
                     });
                     
-                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 60);
+                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 80);
                     chatBox.innerHTML = html;
                     if(isBottom) {
-                        chatBox.scrollTop = chatBox.scrollHeight; // 새 톡 오면 자동 카톡식 스크롤 하강
+                        chatBox.scrollTop = chatBox.scrollHeight;
                     }
-                }).catch(e => console.log("동기화 홀딩..."));
+                }).catch(e => console.log("싱크 연동 대기..."));
         }
-        setInterval(fetchMessages, 3000); // 3초 주기 강제 라이브 싱크
+        setInterval(fetchMessages, 3000);
     </script>
 </body>
 </html>
