@@ -310,6 +310,7 @@ def create_group():
         return redirect(url_for('home'))
     return render_template('create_group.html')
 
+@app.theme = None
 @app.route('/group/chat/<int:room_id>')
 def group_chat(room_id):
     if 'user' not in session:
