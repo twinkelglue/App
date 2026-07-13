@@ -3,86 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ profile_user[0] }}의 에스크</title>
+    <title>{{ target_user['username'] }}님의 프로필</title>
+    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 20px; margin: 0; }
-        .container { max-width: 450px; margin: 0 auto; background: #1a1a24; padding: 25px; border-radius: 20px; }
-        .profile-header { text-align: center; margin-bottom: 20px; }
-        .avatar { width: 100px; height: 100px; border-radius: 50%; border: 3px solid #adff2f; object-fit: cover; }
-        input[type="text"], textarea { width: 100%; padding: 15px; border: 2px solid #2e2e3e; border-radius: 20px; background: #252535; color: white; box-sizing: border-box; outline: none; margin-bottom: 10px; }
-        button { background: #adff2f; color: #000; border: none; padding: 12px; font-weight: bold; border-radius: 20px; cursor: pointer; width: 100%; }
-        .btn-alt { background: #252535; color: #fff; border: 1px solid #444; }
-        .msg-box { background: #252535; padding: 15px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid #adff2f; }
-        a { color: #8ab4f8; text-decoration: none; display: inline-block; margin-top: 10px; }
-        .follow-stat { display: flex; justify-content: center; gap: 20px; margin: 10px 0; font-size: 0.95rem; }
+        body { background-color: #fafafa; color: #262626; font-family: 'Pretendard', sans-serif; padding: 20px; margin: 0; }
+        .container { max-width: 420px; margin: 30px auto; background: #ffffff; padding: 24px; border-radius: 16px; border: 1px solid #dbdbdb; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+        .nav-back { display: inline-block; margin-bottom: 20px; color: #737373; font-size: 0.9rem; text-decoration: none; font-weight: 600; }
+        .profile-header { display: flex; flex-direction: column; align-items: center; margin-bottom: 25px; text-align: center; }
+        .avatar-box { width: 90px; height: 90px; border-radius: 50%; overflow: hidden; background: #efefef; border: 1px solid #dbdbdb; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; }
+        .avatar-box img { width: 100%; height: 100%; object-fit: cover; }
+        .username-title { font-size: 1.4rem; font-weight: 800; color: #000; margin: 0 0 8px 0; letter-spacing: -0.5px; }
+        .stats-area { display: flex; gap: 15px; font-size: 0.9rem; color: #262626; margin-bottom: 12px; }
+        .stats-area b { color: #000; }
+        .bio-text { font-size: 0.95rem; color: #4b4b4b; margin: 4px 0; }
+        .section-card { background: #ffffff; border: 1px solid #dbdbdb; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+        .section-card h3 { margin-top: 0; margin-bottom: 12px; font-size: 1rem; font-weight: 700; color: #000; }
+        input[type="text"], textarea { width: 100%; padding: 12px; border: 1px solid #dbdbdb; border-radius: 8px; background: #fafafa; color: #262626; font-size: 0.9rem; box-sizing: border-box; outline: none; font-family: inherit; }
+        input[type="text"]:focus, textarea:focus { border-color: #a8a8a8; background: #fff; }
+        button { background: #000000; color: #ffffff; border: none; padding: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 0.9rem; width: 100%; margin-top: 8px; }
+        .btn-blue { background: #0095f6; color: #fff; }
+        .btn-blue:hover { background: #1877f2; }
+        .btn-outline { background: #ffffff; color: #262626; border: 1px solid #dbdbdb; }
+        .feed-item { background: #ffffff; border: 1px solid #e1e1e1; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+        .q-box { font-weight: 700; color: #000; font-size: 0.95rem; margin-bottom: 8px; }
+        .q-box::before { content: "Q. "; color: #0095f6; }
+        .a-box { font-size: 0.95rem; color: #262626; line-height: 1.4; background: #fafafa; padding: 10px; border-radius: 8px; }
+        .a-box::before { content: "A. "; font-weight: bold; color: #ed4956; }
+        .no-answer { font-size: 0.85rem; color: #8e8e8e; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="container">
-        <p><a href="/">🏠 홈으로 백</a></p>
+        <a href="/" class="nav-back">⬅️ ChatClub 홈으로</a>
+        
         <div class="profile-header">
-            <img class="avatar" src="/static/{{ profile_user[2] }}">
-            <h2>{{ profile_user[0] }}</h2>
-            
-            <!-- [수정] 팔로워수와 내가 추가한 팔로잉 수를 가로 정렬로 힙하게 표시 -->
-            <div class="follow-stat">
-                <span style="color:#adff2f;">⚡ 팔로워 <b>{{ followers_count }}</b></span>
-                <span style="color:#ffffff;">🔥 팔로잉 <b>{{ following_count }}</b></span>
+            <div class="avatar-box">
+                {% if target_user['profile_pic'] %}
+                    <img src="{{ target_user['profile_pic'] }}" alt="프로필">
+                {% else %}
+                    <span style="color:#aaa; font-size:2rem;">👤</span>
+                {% endif %}
             </div>
+            <h2 class="username-title">{{ target_user['username'] }}</h2>
             
-            <p style="color:#bbb; padding: 0 10px;">"{{ profile_user[1] }}"</p>
+            <div class="stats-area">
+                <span>⚡ 팔로워 <b>{{ followers_count }}</b></span>
+                <span>🔥 팔로잉 <b>{{ following_count }}</b></span>
+            </div>
+            <p class="bio-text">"{{ target_user['bio'] if target_user['bio'] else '안녕하세요! ChatClub입니다.' }}"</p>
             
-            {% if session.get('user') and session['user'] != profile_user[0] %}
-                <div style="display:flex; gap:10px; margin-top:15px;">
-                    <form action="/follow/{{ profile_user[0] }}" method="post" style="flex:1;">
-                        <button type="submit" class="{% if is_following %}btn-alt{% endif %}">
-                            {% if is_following %}✔ 언팔하기{% else %}⚡ 맞팔하기{% endif %}
+            {% if session.get('user') and session['user'] != target_user['username'] %}
+                <div style="display:flex; gap:8px; width:100%; margin-top:10px;">
+                    <form action="/follow/{{ target_user['username'] }}" method="post" style="flex:1;">
+                        <button type="submit" class="{{ 'btn-outline' if is_following else 'btn-blue' }}">
+                            {{ '팔로우 취소' if is_following else '팔로우' }}
                         </button>
                     </form>
-                    <a href="/chat/dm/{{ profile_user[0] }}" style="flex:1; background:#adff2f; color:#000; padding:12px; text-align:center; font-weight:bold; border-radius: 20px; margin:0;">💬 갠톡신청</a>
+                    <a href="/chat/dm/{{ target_user['username'] }}" style="flex:1; text-decoration:none;">
+                        <button type="button" class="btn-outline" style="width:100%;">1:1 DM 톡</button>
+                    </a>
                 </div>
             {% endif %}
         </div>
 
-        {% if session.get('user') == profile_user[0] %}
-            <fieldset style="border: 1px solid #2e2e3e; border-radius: 15px; padding: 15px; margin-bottom: 25px;">
-                <legend style="color:#adff2f; padding:0 5px;">내 에스크 설정</legend>
+        {% if session.get('user') == target_user['username'] %}
+            <div class="section-card">
+                <h3>⚙️ 내 에스크 관리</h3>
                 <form action="/update_profile" method="post" enctype="multipart/form-data">
-                    <input type="text" name="bio" value="{{ profile_user[1] }}" placeholder="한줄 상메 수정...">
-                    <input type="file" name="profile_img" style="color:#bbb; margin-bottom:10px;">
-                    <button type="submit">업데이트</button>
+                    <input type="text" name="bio" value="{{ target_user['bio'] }}" placeholder="소개글을 적어주세요..." style="margin-bottom:8px;">
+                    <input type="file" name="profile_pic" accept="image/*" style="font-size:0.85rem; color:#737373;">
+                    <button type="submit" class="btn-blue">정보 업데이트</button>
                 </form>
-            </fieldset>
+            </div>
         {% endif %}
 
-        <h3 style="color:#adff2f;">Anonymous Question</h3>
-        <form action="/ask/{{ profile_user[0] }}" method="post">
-            <textarea name="content" placeholder="여기다가 필터 없이 익명 질문 입력 창..." rows="3" required></textarea>
-            <button type="submit">익명 질문 전송 🚀</button>
-        </form>
+        <div class="section-card">
+            <h3>✉️ Anonymous Question</h3>
+            <form action="/ask/{{ target_user['username'] }}" method="post">
+                <textarea name="question" rows="3" placeholder="여기다가 필터 없이 익명 질문 입력 창 . . ."></textarea>
+                <button type="submit" class="btn-blue" style="background:#000;">익명 질문 전송 🚀</button>
+            </form>
+        </div>
 
-        <h3 style="color:#adff2f; margin-top:30px;">Feeds</h3>
-        {% for msg in messages %}
-            <div class="msg-box">
-                <p style="color:#aaa; font-size:0.85rem;">❓ 익명질문 ({{ msg[4] }})</p>
-                <p style="font-size:1.05rem; font-weight:bold; margin: 5px 0;">{{ msg[2] }}</p>
-                {% if msg[3] %}
-                    <p style="color: #adff2f; margin-top:10px; padding-left:10px; border-left: 2px solid #adff2f;">💬 답변: {{ msg[3] }}</p>
-                {% else %}
-                    <p style="color: #666; font-size:0.9rem;">아직 답변 대기 중...</p>
-                {% endif %}
-
-                {% if session.get('user') == profile_user[0] %}
-                    <form action="/answer/{{ msg[0] }}" method="post" style="margin-top:10px; display:flex; gap:5px;">
-                        <input type="text" name="answer" value="{{ msg[3] if msg[3] else '' }}" placeholder="답변 달기..." style="margin:0; padding:10px;">
-                        <button type="submit" style="width:70px; padding:0;">등록</button>
-                    </form>
-                    <form action="/delete_message/{{ msg[0] }}" method="post" style="margin-top:5px;">
-                        <button type="submit" style="background:#ff6b6b; color:#fff; padding:5px; font-size:0.8rem;">삭제</button>
-                    </form>
-                {% endif %}
-            </div>
-        {% endfor %}
+        <h3>Feeds</h3>
+        {% if questions %}
+            {% for q in questions %}
+                <div class="feed-item">
+                    <div class="q-box">{{ q['question']|safe }}</div>
+                    {% if q['answer'] %}
+                        <div class="a-box">{{ q['answer']|safe }}</div>
+                    {% else %}
+                        <p class="no-answer">아직 답변이 등록되지 않았습니다.</p>
+                        {% if session.get('user') == target_user['username'] %}
+                            <form action="/answer/{{ q['id'] }}" method="post" style="margin-top:8px; display:flex; gap:6px;">
+                                <input type="text" name="answer" placeholder="답변을 입력하세요..." style="padding:8px 12px; font-size:0.85rem;">
+                                <button type="submit" class="btn-blue" style="width:auto; padding:0 14px; margin-top:0; font-size:0.85rem;">답변</button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+                    {% if session.get('user') == target_user['username'] %}
+                        <form action="/delete_ask/{{ q['id'] }}" method="post" style="margin-top:8px; text-align:right;">
+                            <button type="submit" style="background:none; color:#ed4956; border:none; padding:0; font-size:0.8rem; cursor:pointer; width:auto; font-weight:600;">질문 삭제</button>
+                        </form>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="color:#8e8e8e; font-size:0.85rem; text-align:center; padding:20px 0;">도착한 질문이 없습니다!</p>
+        {% endif %}
     </div>
 </body>
 </html>
