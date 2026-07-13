@@ -3,35 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Results</title>
+    <title>ChatClub 검색 결과</title>
+    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 20px; }
-        .container { max-width: 450px; margin: 0 auto; background: #1a1a24; padding: 25px; border-radius: 20px; }
-        .user-card { background: #252535; padding: 15px; border-radius: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        a { color: #fff; text-decoration: none; font-weight: bold; }
-        .btn-sm { background: #adff2f; color: #000; padding: 6px 12px; font-size: 0.85rem; border-radius: 15px; font-weight: bold; text-align: center; }
+        body { background-color: #fafafa; color: #262626; font-family: 'Pretendard', sans-serif; padding: 20px; margin: 0; }
+        .container { max-width: 420px; margin: 30px auto; background: #ffffff; padding: 24px; border-radius: 16px; border: 1px solid #dbdbdb; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+        h2 { font-size: 1.4rem; color: #000; margin-bottom: 20px; font-weight: 800; letter-spacing: -0.5px; }
+        .search-query { color: #0095f6; }
+        .user-list { list-style: none; padding: 0; margin: 0; }
+        .user-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 4px; border-bottom: 1px solid #efefef; }
+        .user-info { font-weight: 600; color: #262626; font-size: 1rem; }
+        .btn-visit { background: #000000; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; }
+        .btn-visit:hover { background: #262626; }
+        .no-result { text-align: center; color: #8e8e8e; padding: 30px 0; font-size: 0.9rem; }
+        .back-link { display: block; text-align: center; margin-top: 25px; color: #737373; font-size: 0.9rem; text-decoration: none; font-weight: 600; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h3 style="color:#adff2f;">'{{ query }}' 검색 결과</h3>
-        <p><a href="/" style="color:#aaa;">◀ 홈으로</a></p>
-        <hr style="border:1px solid #2e2e3e; margin:15px 0;">
-        {% if results %}
-            {% for row in results %}
-                <div class="user-card">
-                    <div>
-                        <a href="/user/{{ row[0] }}">⚡ {{ row[0] }}</a>
-                        <p style="margin:5px 0 0 0; font-size:0.85rem; color:#aaa;">{{ row[1] }}</p>
-                    </div>
-                    <div>
-                        <a href="/user/{{ row[0] }}" class="btn-sm">구경가기</a>
-                    </div>
-                </div>
+        <h2>🔍 '<span class="search-query">{{ query }}</span>' 검색 결과</h2>
+        
+        {% if users %}
+            <ul class="user-list">
+            {% for u in users %}
+                <li class="user-item">
+                    <span class="user-info">👤 {{ u['username'] }}</span>
+                    <a href="/user/{{ u['username'] }}" class="btn-visit">프로필 방문</a>
+                </li>
             {% endfor %}
+            </ul>
         {% else %}
-            <p style="color:#666;">해당 유저가 존재하지 않습니다.</p>
+            <p class="no-result">검색 결과와 일치하는 유저가 없습니다. 🥲</p>
         {% endif %}
+        
+        <a href="/" class="back-link">⬅️ ChatClub 홈으로</a>
     </div>
 </body>
 </html>
+
