@@ -14,12 +14,12 @@ def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
     return conn
 
-# 데이터베이스 테이블 초기화 (기존 데이터 구조 100% 영구화)
+# 데이터베이스 테이블 초기화 (채팅방 이미지 보존용 image_url 필드 완벽 반영)
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블 (소개글, 프사 기능 포함)
+    # 1. 유저 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -30,7 +30,7 @@ def init_db():
         )
     ''')
     
-    # 2. 팔로우 테이블 (팔로워/팔로잉 숫자 연동)
+    # 2. 팔로우 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS follows (
             id SERIAL PRIMARY KEY,
@@ -40,7 +40,7 @@ def init_db():
         )
     ''')
     
-    # 3. 에스크 질문 테이블 (익명 질문 및 답변 피드용)
+    # 3. 에스크 질문 테이블
     cur.execute('''
         CREATE TABLE IF NOT EXISTS asked (
             id SERIAL PRIMARY KEY,
@@ -51,7 +51,7 @@ def init_db():
         )
     ''')
     
-    # 4. 채팅 메시지 테이블 (1:1 DM 및 그룹 단톡방 + Imgur 사진 링크 통합)
+    # 4. 채팅 메시지 테이블 (사진 영구 저장 공간 image_url 완벽 포함)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -63,6 +63,15 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # 5. 그룹 단톡방 정보 테이블 (누락방지 추가)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS group_rooms (
+            id SERIAL PRIMARY KEY,
+            room_name TEXT NOT NULL,
+            created_by TEXT NOT NULL
+        )
+    ''')
     
     conn.commit()
     cur.close()
@@ -70,7 +79,7 @@ def init_db():
 
 init_db()
 
-# 유튜브 링크 헬퍼 함수
+# 유튜브 링크 자동 변환 헬퍼 함수
 def convert_youtube_links(text):
     if not text:
         return ""
@@ -78,7 +87,7 @@ def convert_youtube_links(text):
     replacement = r'<br><iframe width="100%" height="200" src="https://www.youtube.com/embed/\2" frameborder="0" allowfullscreen></iframe><br>'
     return re.sub(pattern, replacement, text)
 
-# Imgur 외부 이미지 금고 업로드 함수 (절대 안 깨짐)
+# Imgur 외부 이미지 금고 업로드 함수 (사진 터짐 방지)
 def upload_to_imgur(file_storage):
     try:
         headers = {"Authorization": "Client-ID 54401259d9975e9"}
@@ -93,8 +102,32 @@ def upload_to_imgur(file_storage):
 
 @app.route('/')
 def home():
-    if 'username' in session:
-        return redirect(url_for('profile', username=session['username']))
+    if 'user' in session:
+        # 메인 홈에서 내가 참여중인 갠톡방/단톡방 리스트를 index.html에 뿌려주기 위한 데이터 전송
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 내가 대화한 적 있는 DM 상대방들 가져오기
+        cur.execute('''
+            SELECT DISTINCT room_id FROM messages 
+            WHERE room_type = 'dm' AND room_id LIKE %s
+        ''', (f"%{session['user']}%",))
+        dm_rooms = cur.fetchall()
+        my_dms = []
+        for r in dm_rooms:
+            parts = r['room_id'].split('-')
+            if session['user'] in parts:
+                other = parts[1] if parts[0] == session['user'] else parts[0]
+                if other not in my_dms:
+                    my_dms.append(other)
+                    
+        # 모든 그룹 단톡방 리스트 가져오기
+        cur.execute('SELECT id, room_name FROM group_rooms')
+        my_rooms = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        return render_template('index.html', my_dms=my_dms, my_rooms=my_rooms)
     return render_template('index.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -110,7 +143,7 @@ def register():
         try:
             cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, password))
             conn.commit()
-            session['username'] = username
+            session['user'] = username
             return redirect(url_for('profile', username=username))
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
@@ -134,7 +167,7 @@ def login():
         conn.close()
         
         if user:
-            session['username'] = username
+            session['user'] = username
             return redirect(url_for('profile', username=username))
         else:
             return "아이디 또는 비밀번호가 틀렸습니다."
@@ -142,7 +175,7 @@ def login():
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
+    session.pop('user', None)
     return redirect(url_for('home'))
 
 @app.route('/user/<username>')
@@ -166,8 +199,8 @@ def profile(username):
     following_count = cur.fetchone()[0]
     
     is_following = False
-    if 'username' in session and session['username'] != username:
-        cur.execute('SELECT id FROM users WHERE username = %s', (session['username'],))
+    if 'user' in session and session['user'] != username:
+        cur.execute('SELECT id FROM users WHERE username = %s', (session['user'],))
         me = cur.fetchone()
         if me:
             cur.execute('SELECT * FROM follows WHERE follower_id = %s AND following_id = %s', (me['id'], target_user['id']))
@@ -184,12 +217,12 @@ def profile(username):
         q_dict['answer'] = convert_youtube_links(q_dict['answer'])
         processed_questions.append(q_dict)
         
-    return render_template('profile.html', target_user=target_user, questions=processed_questions, 
+    return render_template('user.html', target_user=target_user, questions=processed_questions, 
                            followers_count=followers_count, following_count=following_count, is_following=is_following)
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('home'))
     bio = request.form.get('bio', '').strip()
     file = request.files.get('profile_pic')
@@ -201,24 +234,24 @@ def update_profile():
     conn = get_db_connection()
     cur = conn.cursor()
     if profile_pic_url:
-        cur.execute('UPDATE users SET bio = %s, profile_pic = %s WHERE username = %s', (bio, profile_pic_url, session['username']))
+        cur.execute('UPDATE users SET bio = %s, profile_pic = %s WHERE username = %s', (bio, profile_pic_url, session['user']))
     else:
-        cur.execute('UPDATE users SET bio = %s WHERE username = %s', (bio, session['username']))
+        cur.execute('UPDATE users SET bio = %s WHERE username = %s', (bio, session['user']))
     conn.commit()
     cur.close()
     conn.close()
-    return redirect(url_for('profile', username=session['username']))
+    return redirect(url_for('profile', username=session['user']))
 
 @app.route('/follow/<username>', methods=['POST'])
 def follow(username):
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('home'))
-    if session['username'] == username:
+    if session['user'] == username:
         return "자기 자신을 팔로우할 수 없습니다."
         
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT id FROM users WHERE username = %s', (session['username'],))
+    cur.execute('SELECT id FROM users WHERE username = %s', (session['user'],))
     me = cur.fetchone()
     cur.execute('SELECT id FROM users WHERE username = %s', (username,))
     target = cur.fetchone()
@@ -250,46 +283,82 @@ def ask(username):
 
 @app.route('/answer/<int:q_id>', methods=['POST'])
 def answer(q_id):
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('home'))
     answer_text = request.form.get('answer', '').strip()
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('UPDATE asked SET answer = %s WHERE id = %s AND target_user = %s', (answer_text, q_id, session['username']))
+    cur.execute('UPDATE asked SET answer = %s WHERE id = %s AND target_user = %s', (answer_text, q_id, session['user']))
     conn.commit()
     cur.close()
     conn.close()
-    return redirect(url_for('profile', username=session['username']))
+    return redirect(url_for('profile', username=session['user']))
 
 @app.route('/delete_ask/<int:q_id>', methods=['POST'])
 def delete_ask(q_id):
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('home'))
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DELETE FROM asked WHERE id = %s AND target_user = %s', (q_id, session['username']))
+    cur.execute('DELETE FROM asked WHERE id = %s AND target_user = %s', (q_id, session['user']))
     conn.commit()
     cur.close()
     conn.close()
-    return redirect(url_for('profile', username=session['username']))
+    return redirect(url_for('profile', username=session['user']))
 
-# --- 🚀 실시간 1:1 DM, 그룹 단톡방, 4초 실시간 폴링 알림 기능 완벽 지원 ---
+# --- 🔍 저격 유저 검색 라우터 (누락방지 복구!) ---
+@app.route('/search')
+def search():
+    query = request.args.get('query', '').strip()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT username, bio FROM users WHERE username LIKE %s', (f"%{query}%",))
+    results = cur.fetchall()
+    cur.close()
+    conn.close()
+    return render_template('search_results.html', results=results, query=query)
 
+# --- 👥 그룹 단톡방 생성 및 오픈 입장 라우터 (누락방지 복구!) ---
+@app.route('/group/create', methods=['GET', 'POST'])
+def create_group():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        room_name = request.form.get('room_name', '').strip()
+        if not room_name:
+            return "방 이름을 입력해주세요."
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('INSERT INTO group_rooms (room_name, created_by) VALUES (%s, %s)', (room_name, session['user']))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return redirect(url_for('home'))
+    return render_template('create_group.html')
+
+@app.route('/group/chat/<int:room_id>')
+def group_chat(room_id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT room_name FROM group_rooms WHERE id = %s', (room_id,))
+    room = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not room:
+        return "존재하지 않는 단톡방입니다.", 404
+    return render_template('chat.html', room_type='group', room_id=str(room_id), target_name=room['room_name'])
+
+# --- 🚀 실시간 메시지 API 및 자동 알림 라우터 ---
 @app.route('/chat/dm/<target_username>')
 def chat_dm(target_username):
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('home'))
-    me = session['username']
+    me = session['user']
     room_id = "-".join(sorted([me, target_username]))
     return render_template('chat.html', room_type='dm', room_id=room_id, target_name=target_username)
 
-@app.route('/chat/group/<room_name>')
-def chat_group(room_name):
-    if 'username' not in session:
-        return redirect(url_for('home'))
-    return render_template('chat.html', room_type='group', room_id=room_name, target_name=room_name)
-
-# 프론트엔드에서 4초마다 대화 기록을 쏙쏙 빼오는 실시간 알림 동기화 API
 @app.route('/api/messages/<room_type>/<room_id>')
 def get_messages(room_type, room_id):
     conn = get_db_connection()
@@ -302,26 +371,24 @@ def get_messages(room_type, room_id):
     messages = []
     for r in rows:
         msg_html = convert_youtube_links(r['message'])
-        # 사진 주소가 있을 경우, 메인 대화창에 영구 보존된 주소로 이미지 띄우기
         if r['image_url']:
-            msg_html += f'<br><img src="{r["image_url"]}" style="max-width:230px; border-radius:10px; margin-top:6px; box-shadow: 0px 2px 5px rgba(0,0,0,0.1);">'
+            msg_html += f'<br><img src="{r["image_url"]}" style="max-width:200px; border-radius:10px; margin-top:5px;">'
         messages.append({'sender': r['sender'], 'message': msg_html})
     return jsonify(messages)
 
-# 메시지 및 이미지 업로드 통합 처리 API
 @app.route('/api/send_message', methods=['POST'])
 def send_message():
-    if 'username' not in session:
+    if 'user' not in session:
         return jsonify({'status': 'fail'}), 403
         
     room_type = request.form.get('room_type')
     room_id = request.form.get('room_id')
     message = request.form.get('message', '').strip()
-    file = request.files.get('image') # 파일 선택창(HTML)에서 날아온 이미지 감지
+    file = request.files.get('image')
     
     image_url = ''
     if file and file.filename != '':
-        image_url = upload_to_imgur(file) or '' # 외부 이미지 금고로 안전하게 우회 저장
+        image_url = upload_to_imgur(file) or ''
         
     if not message and not image_url:
         return jsonify({'status': 'fail', 'reason': 'empty'}), 400
@@ -329,11 +396,16 @@ def send_message():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('INSERT INTO messages (room_type, room_id, sender, message, image_url) VALUES (%s, %s, %s, %s, %s)',
-                (room_type, room_id, session['username'], message, image_url))
+                (room_type, room_id, session['user'], message, image_url))
     conn.commit()
     cur.close()
     conn.close()
     return jsonify({'status': 'success'})
+
+@app.route('/api/check_notifications')
+def check_notifications():
+    # 실시간 알림 새로고침 감지용 빈 라우터 에러 방지용 추가
+    return jsonify({'new_dms': 0, 'new_groups': 0})
 
 if __name__ == '__main__':
     app.run(debug=True)
