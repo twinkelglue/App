@@ -5,47 +5,63 @@
     <title>ChatClub</title>
     <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; text-align: center; padding-top: 100px; }
-        h1 { color: #adff2f; font-size: 3rem; text-shadow: 0 0 10px #adff2f; }
-        .btn { display: inline-block; padding: 12px 24px; margin: 10px; border: 2px solid #adff2f; color: #adff2f; text-decoration: none; font-weight: bold; border-radius: 30px; background: transparent; transition: 0.3s; cursor: pointer; }
+        body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; text-align: center; padding-top: 80px; margin: 0; }
+        h1 { color: #adff2f; font-size: 3rem; text-shadow: 0 0 10px rgba(173,255,47,0.5); margin-bottom: 5px; }
+        .sub-text { color: #888; font-size: 1rem; margin-bottom: 30px; }
+        .btn { display: inline-block; padding: 12px 24px; margin: 10px; border: 2px solid #adff2f; color: #adff2f; text-decoration: none; font-weight: bold; border-radius: 30px; background: transparent; transition: 0.3s; cursor: pointer; font-family: inherit; }
         .btn:hover { background: #adff2f; color: #000; box-shadow: 0 0 15px #adff2f; }
-        .container { max-width: 500px; margin: 0 auto; background: #151515; padding: 30px; border-radius: 20px; border: 1px solid #333; }
-        input[type="text"], input[type="password"] { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #333; background: #222; color: #fff; border-radius: 5px; }
-        .list-item { display: block; padding: 10px; margin: 5px 0; background: #222; color: #fff; text-decoration: none; border-radius: 5px; }
-        .list-item:hover { background: #333; color: #adff2f; }
+        .container { max-width: 450px; margin: 0 auto; background: #151515; padding: 30px; border-radius: 24px; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        input[type="text"], input[type="password"] { width: 85%; padding: 12px; margin: 10px 0; border: 1px solid #333; background: #222; color: #fff; border-radius: 10px; outline: none; font-family: inherit; text-align: center; }
+        input[type="text"]:focus, input[type="password"]:focus { border-color: #adff2f; }
+        .list-item { display: block; padding: 12px; margin: 8px 0; background: #1f1f1f; color: #fff; text-decoration: none; border-radius: 12px; border: 1px solid #2a2a2a; text-align: left; transition: 0.2s; }
+        .list-item:hover { background: #252525; border-color: #adff2f; color: #adff2f; }
+        .search-box { margin-bottom: 25px; }
+        .search-box input { width: 70%; padding: 10px; border-radius: 20px 0 0 20px; border: 1px solid #333; background: #222; color: #fff; outline: none; }
+        .search-box button { width: 15%; padding: 10px; border-radius: 0 20px 20px 0; border: 1px solid #adff2f; background: #adff2f; color: #000; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
     <h1>ChatClub</h1>
+    <p class="sub-text">익명 질문과 실시간 채팅을 한번에</p>
+    
     <div class="container">
         {% if session.get('user') %}
-            <p><span style="color:#adff2f; font-weight:bold;">{{ session['user'] }}</span>님 환영합니다!</p>
-            <a href="/user/{{ session['user'] }}" class="btn">내 에스크 홈</a>
-            <a href="/logout" class="btn" style="border-color:#ff4757; color:#ff4757;">로그아웃</a>
-            <hr style="border-color:#333; margin:200px 0 20px 0;">
+            <p style="font-size: 1.1rem; margin-bottom: 20px;">🔥 <span style="color:#adff2f; font-weight:bold;">{{ session['user'] }}</span>님 환영합니다!</p>
             
-            <h3 style="color:#adff2f;">내 DM 대화방</h3>
+            <div style="margin-bottom: 25px;">
+                <a href="/user/{{ session['user'] }}" class="btn">내 에스크 홈</a>
+                <a href="/logout" class="btn" style="border-color:#ff4757; color:#ff4757;">로그아웃</a>
+            </div>
+
+            <form action="/search" method="GET" class="search-box">
+                <input type="text" name="query" placeholder="친구 아이디 검색..." required><button type="submit">🔍</button>
+            </form>
+
+            <hr style="border: 0; border-top: 1px solid #222; margin: 25px 0;">
+            
+            <h3 style="color:#adff2f; text-align: left; margin-left: 5px;">💬 개인 톡방 목록</h3>
             {% for dm in my_dms %}
-                <a href="/chat/dm/{{ dm }}" class="list-item">💬 {{ dm }}님과의 대화</a>
+                <a href="/chat/dm/{{ dm }}" class="list-item">⚡ {{ dm }}님과의 갠톡</a>
             {% else %}
-                <p style="color:#666;">참여 중인 DM이 없습니다.</p>
+                <p style="color:#555; font-size: 0.9rem; padding: 10px 0;">참여 중인 대화가 없습니다.</p>
             {% endfor %}
 
-            <h3 style="color:#adff2f; margin-top:30px;">그룹 단톡방 목록</h3>
-            <a href="/group/create" class="btn" style="font-size:0.8rem; padding:6px 12px;">+ 방 만들기</a>
+            <h3 style="color:#adff2f; text-align: left; margin-left: 5px; margin-top: 30px;">👥 그룹 단톡방 목록</h3>
+            <div style="text-align: left; margin-bottom: 10px;">
+                <a href="/group/create" class="btn" style="font-size:0.8rem; padding:6px 14px; margin: 0;">+ 새 그룹방 만들기</a>
+            </div>
             {% for room in my_rooms %}
-                <a href="/group/chat/{{ room['id'] }}" class="list-item">👥 {{ room['room_name'] }}</a>
+                <a href="/group/chat/{{ room[0] }}" class="list-item">👥 {{ room[1] }}</a>
             {% else %}
-                <p style="color:#666;">개설된 단톡방이 없습니다.</p>
+                <p style="color:#555; font-size: 0.9rem; padding: 10px 0;">가입된 그룹 단톡방이 없습니다.</p>
             {% endfor %}
         {% else %}
-            <p>익명 질문과 실시간 채팅을 한 번에!</p>
             <form action="/login" method="POST">
                 <input type="text" name="username" placeholder="아이디" required><br>
                 <input type="password" name="password" placeholder="비밀번호" required><br>
-                <button type="submit" class="btn">로그인</button>
+                <button type="submit" class="btn" style="width: 90%; margin-top: 15px;">로그인</button>
             </form>
-            <a href="/register" style="color:#adff2f; display:block; margin-top:15px; text-decoration:none;">아직 계정이 없으신가요? 회원가입</a>
+            <a href="/register" style="color:#adff2f; display:block; margin-top:20px; text-decoration:none; font-size: 0.9rem;">아직 계정이 없으신가요? 회원가입</a>
         {% endif %}
     </div>
 </body>
