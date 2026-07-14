@@ -6,26 +6,28 @@
     <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
         body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; margin: 0; padding: 20px; }
-        .chat-container { max-width: 450px; margin: 20px auto; background: #151515; border: 1px solid #222; border-radius: 20px; display: flex; flex-direction: column; height: 80vh; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; }
-        .chat-header { padding: 15px; border-bottom: 1px solid #222; font-weight: bold; font-size: 1.1rem; text-align: center; color: #adff2f; background: #151515; }
+        .chat-container { max-width: 450px; margin: 20px auto; background: #151515; border: 1px solid #222; border-radius: 24px; display: flex; flex-direction: column; height: 75vh; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; }
+        .chat-header { padding: 18px; border-bottom: 1px solid #222; font-weight: bold; font-size: 1.1rem; text-align: center; color: #adff2f; background: #151515; }
         .chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #111; display: flex; flex-direction: column; gap: 12px; }
-        .msg-row { display: flex; flex-direction: column; margin-bottom: 2px; }
-        .msg-sender { font-size: 0.75rem; color: #888; margin-bottom: 2px; font-weight: bold; }
+        .msg-row { display: flex; flex-direction: column; }
+        .msg-sender { font-size: 0.75rem; color: #888; margin-bottom: 3px; font-weight: bold; padding: 0 4px; }
         .msg-bubble { display: inline-block; max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 0.95rem; line-height: 1.4; word-break: break-all; }
         .msg-row.me { align-items: flex-end; }
-        .msg-row.me .msg-bubble { background: #adff2f; color: #000; font-weight: 500; }
+        .msg-row.me .msg-bubble { background: #adff2f; color: #000; font-weight: 500; border-top-right-radius: 2px; }
         .msg-row.other { align-items: flex-start; }
-        .msg-row.other .msg-bubble { background: #222; color: #fff; border: 1px solid #333; }
+        .msg-row.other .msg-bubble { background: #222; color: #fff; border: 1px solid #333; border-top-left-radius: 2px; }
         .chat-input-area { padding: 12px; border-top: 1px solid #222; display: flex; align-items: center; gap: 8px; background: #151515; }
-        .chat-input-area input[type="text"] { flex: 1; padding: 10px 14px; border: 1px solid #333; border-radius: 20px; outline: none; font-size: 0.95rem; background: #222; color: #fff; }
-        .chat-input-area button { background: #adff2f; color: #000; border: none; padding: 10px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+        .chat-input-area input[type="text"] { flex: 1; padding: 12px 16px; border: 1px solid #333; border-radius: 24px; outline: none; font-size: 0.95rem; background: #222; color: #fff; font-family: inherit; }
+        .chat-input-area input[type="text"]:focus { border-color: #adff2f; }
+        .chat-input-area button { background: #adff2f; color: #000; border: none; padding: 12px 20px; border-radius: 24px; font-weight: bold; cursor: pointer; font-size: 0.9rem; font-family: inherit; transition: 0.2s; }
+        .chat-input-area button:hover { box-shadow: 0 0 10px #adff2f; }
         .back-link { display: block; text-align: center; margin-top: 15px; color: #666; font-size: 0.9rem; text-decoration: none; }
         .back-link:hover { color: #fff; }
     </style>
 </head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">💬 {{ target_name }}</div>
+        <div class="chat-header">{{ target_name }}</div>
         <div class="chat-messages" id="chatBox"></div>
         
         <div class="chat-input-area">
@@ -33,7 +35,7 @@
             <button onclick="sendMsg()">전송</button>
         </div>
     </div>
-    <a href="/" class="back-link">🏠 ChatClub 홈으로 돌아가기</a>
+    <a href="/" class="back-link">🏠 홈으로 돌아가기</a>
 
     <script>
         const roomType = "{{ room_type }}";
@@ -41,7 +43,7 @@
         const myName = "{{ session.get('user') }}";
 
         function loadMessages() {
-            fetch(`/api/messages/${roomType}/${roomId}`)
+            fetch(`/api/chat_history/${roomType}/${roomId}`)
                 .then(res => res.json())
                 .then(data => {
                     const box = document.getElementById('chatBox');
@@ -55,7 +57,7 @@
                             </div>
                         `;
                     });
-                    const wasAtBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 50;
+                    const wasAtBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 60;
                     box.innerHTML = html;
                     if(wasAtBottom) {
                         box.scrollTop = box.scrollHeight;
@@ -65,25 +67,26 @@
 
         function sendMsg() {
             const inp = document.getElementById('msgInput');
-            const txt = inp.value.trim();
+            const txt = inp.value.strip ? inp.value.strip() : inp.value.trim();
             if(!txt) return;
 
             const formData = new FormData();
-            formData.append('room_type', roomType);
-            formData.append('room_id', roomId);
             formData.append('message', txt);
 
-            fetch('/api/send_message', { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(data => {
-                    if(data.status === 'success') {
-                        inp.value = '';
-                        loadMessages();
-                    }
+            // 현재 라우트 주소로 비동기 POST 처리
+            fetch(window.location.pathname, { method: 'POST', body: formData })
+                .then(() => {
+                    inp.value = '';
+                    loadMessages();
                 });
         }
-        setInterval(loadMessages, 3000);
+
+        setInterval(loadMessages, 2500);
         loadMessages();
+        setTimeout(() => {
+            const box = document.getElementById('chatBox');
+            box.scrollTop = box.scrollHeight;
+        }, 300);
     </script>
 </body>
 </html>
