@@ -2,91 +2,91 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>ChatRoom</title>
-    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room</title>
     <style>
-        body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; margin: 0; padding: 20px; }
-        .chat-container { max-width: 450px; margin: 20px auto; background: #151515; border: 1px solid #222; border-radius: 24px; display: flex; flex-direction: column; height: 75vh; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; }
-        .chat-header { padding: 18px; border-bottom: 1px solid #222; font-weight: bold; font-size: 1.1rem; text-align: center; color: #adff2f; background: #151515; }
-        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #111; display: flex; flex-direction: column; gap: 12px; }
-        .msg-row { display: flex; flex-direction: column; }
-        .msg-sender { font-size: 0.75rem; color: #888; margin-bottom: 3px; font-weight: bold; padding: 0 4px; }
-        .msg-bubble { display: inline-block; max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 0.95rem; line-height: 1.4; word-break: break-all; }
-        .msg-row.me { align-items: flex-end; }
-        .msg-row.me .msg-bubble { background: #adff2f; color: #000; font-weight: 500; border-top-right-radius: 2px; }
-        .msg-row.other { align-items: flex-start; }
-        .msg-row.other .msg-bubble { background: #222; color: #fff; border: 1px solid #333; border-top-left-radius: 2px; }
-        .chat-input-area { padding: 12px; border-top: 1px solid #222; display: flex; align-items: center; gap: 8px; background: #151515; }
-        .chat-input-area input[type="text"] { flex: 1; padding: 12px 16px; border: 1px solid #333; border-radius: 24px; outline: none; font-size: 0.95rem; background: #222; color: #fff; font-family: inherit; }
-        .chat-input-area input[type="text"]:focus { border-color: #adff2f; }
-        .chat-input-area button { background: #adff2f; color: #000; border: none; padding: 12px 20px; border-radius: 24px; font-weight: bold; cursor: pointer; font-size: 0.9rem; font-family: inherit; transition: 0.2s; }
-        .chat-input-area button:hover { box-shadow: 0 0 10px #adff2f; }
-        .back-link { display: block; text-align: center; margin-top: 15px; color: #666; font-size: 0.9rem; text-decoration: none; }
-        .back-link:hover { color: #fff; }
+        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 15px; margin: 0; }
+        .chat-container { max-width: 450px; margin: 0 auto; background: #1a1a24; height: 100vh; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; }
+        .chat-header { background: #252535; padding: 15px; text-align: center; border-bottom: 1px solid #2e2e3e; font-weight: bold; color: #adff2f; }
+        .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #13131c; }
+        .bubble { margin-bottom: 12px; max-width: 75%; padding: 12px; border-radius: 15px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
+        .bubble.me { background: #adff2f; color: #000; margin-left: auto; border-top-right-radius: 2px; }
+        .bubble.other { background: #252535; color: #fff; margin-right: auto; border-top-left-radius: 2px; }
+        .chat-footer { padding: 10px; background: #1a1a24; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2e2e3e; }
+        .input-row { display: flex; gap: 8px; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 25px; border: 2px solid #2e2e3e; background: #252535; color: white; outline: none; }
+        .file-label { background: #252535; color: #fff; border: 2px solid #2e2e3e; padding: 10px 15px; font-weight: bold; border-radius: 25px; cursor: pointer; text-align: center; font-size: 0.9rem; }
+        button { background: #adff2f; color: #000; border: none; padding: 0 20px; font-weight: bold; border-radius: 25px; cursor: pointer; }
+        .chat-img-preview { max-width: 100%; border-radius: 10px; margin-top: 5px; display: block; }
     </style>
 </head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">{{ target_name }}</div>
-        <div class="chat-messages" id="chatBox"></div>
-        
-        <div class="chat-input-area">
-            <input type="text" id="msgInput" placeholder="메시지를 입력하세요..." onkeypress="if(event.keyCode==13) sendMsg()">
-            <button onclick="sendMsg()">전송</button>
+        <div class="chat-header">
+            {{ target_name }}
+            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 홈화면</a>
+            <span style="font-size:0.75rem; color:#adff2f; margin-left:5px;">● LIVE</span>
         </div>
+        
+        <div class="chat-box" id="chat-box-div">
+            {% for chat in chat_history %}
+                <div style="font-size:0.75rem; color:#888; text-align: {% if chat[0] == session['user'] %}right{% else %}left{% endif %}; margin-bottom:2px;">
+                    {{ chat[0] }}
+                </div>
+                <div class="bubble {% if chat[0] == session['user'] %}me{% else %}other{% endif %}">
+                    <!-- 메시지 텍스트 렌더링 (유튜브 아이프레임 포함 가능하므로 safe 필터 적용) -->
+                    {% if chat[1] %}{{ chat[1]|safe }}{% endif %}
+                    
+                    <!-- 공유된 사진이 있는 경우 렌더링 -->
+                    {% if chat[2] %}
+                        <img src="/static/{{ chat[2] }}" class="chat-img-preview" alt="공유 사진">
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        
+        <form class="chat-footer" method="post" action="" enctype="multipart/form-data">
+            <div style="display: flex; gap: 5px; align-items: center;">
+                <label for="chat_img" class="file-label">📷 사진첨부</label>
+                <input type="file" name="chat_img" id="chat_img" accept="image/*" style="display: none;" onchange="alert('사진이 선택되었습니다!')">
+            </div>
+            <div class="input-row">
+                <input type="text" name="message" id="msg-input" placeholder="메시지 또는 유튜브 링크 입력..." autocomplete="off" autofocus>
+                <button type="submit">전송</button>
+            </div>
+        </form>
     </div>
-    <a href="/" class="back-link">🏠 홈으로 돌아가기</a>
 
     <script>
-        const roomType = "{{ room_type }}";
-        const roomId = "{{ room_id }}";
-        const myName = "{{ session.get('user') }}";
+        const chatBox = document.getElementById('chat-box-div');
+        chatBox.scrollTop = chatBox.scrollHeight;
 
-        function loadMessages() {
-            fetch(`/api/chat_history/${roomType}/${roomId}`)
+        function fetchMessages() {
+            fetch('/api/chat_history/{{ room_type }}/{{ room_id }}')
                 .then(res => res.json())
                 .then(data => {
-                    const box = document.getElementById('chatBox');
                     let html = '';
-                    data.forEach(m => {
-                        const isMe = (m.sender === myName) ? 'me' : 'other';
-                        html += `
-                            <div class="msg-row ${isMe}">
-                                <div class="msg-sender">${m.sender}</div>
-                                <div class="msg-bubble">${m.message}</div>
-                            </div>
-                        `;
+                    data.forEach(chat => {
+                        let isMe = (chat.sender === "{{ session['user'] }}");
+                        html += `<div style="font-size:0.75rem; color:#888; text-align: ${isMe ? 'right' : 'left'}; margin-bottom:2px;">${chat.sender}</div>`;
+                        html += `<div class="bubble ${isMe ? 'me' : 'other'}">`;
+                        if(chat.message) {
+                            html += chat.message;
+                        }
+                        if(chat.file_path) {
+                            html += `<img src="/static/${chat.file_path}" class="chat-img-preview" alt="공유 사진">`;
+                        }
+                        html += `</div>`;
                     });
-                    const wasAtBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 60;
-                    box.innerHTML = html;
-                    if(wasAtBottom) {
-                        box.scrollTop = box.scrollHeight;
+                    
+                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 80);
+                    chatBox.innerHTML = html;
+                    if(isBottom) {
+                        chatBox.scrollTop = chatBox.scrollHeight;
                     }
-                });
+                }).catch(e => console.log("싱크 연동 대기..."));
         }
-
-        function sendMsg() {
-            const inp = document.getElementById('msgInput');
-            const txt = inp.value.strip ? inp.value.strip() : inp.value.trim();
-            if(!txt) return;
-
-            const formData = new FormData();
-            formData.append('message', txt);
-
-            // 현재 라우트 주소로 비동기 POST 처리
-            fetch(window.location.pathname, { method: 'POST', body: formData })
-                .then(() => {
-                    inp.value = '';
-                    loadMessages();
-                });
-        }
-
-        setInterval(loadMessages, 2500);
-        loadMessages();
-        setTimeout(() => {
-            const box = document.getElementById('chatBox');
-            box.scrollTop = box.scrollHeight;
-        }, 300);
+        setInterval(fetchMessages, 3000);
     </script>
 </body>
 </html>
