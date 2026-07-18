@@ -89,6 +89,7 @@ def init_db():
 # 앱 시작 시 DB 초기화 (새로운 DM 테이블이 자동으로 만들어집니다)
 init_db()
 
+# ✨ 새로 교체할 메인 홈 코드
 @app.route('/')
 def index():
     user = session.get('user')
@@ -98,10 +99,19 @@ def index():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 모든 단톡방 리스트 가져오기
-    cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
-    my_rooms = cur.fetchall()
     if user:
+        # 🔐 모든 단톡방이 아니라, 내가 만든 방이거나 내가 초대받은 방만 가져오기
+        query_rooms = """
+            SELECT DISTINCT cr.id, cr.room_name 
+            FROM chat_rooms cr
+            LEFT JOIN room_members rm ON cr.id = rm.room_id
+            WHERE cr.created_by = %s OR rm.user_id = %s
+            ORDER BY cr.id DESC
+        """
+        cur.execute(query_rooms, (user, user))
+        my_rooms = cur.fetchall()
+        
+        # 내가 팔로우한 유저 리스트 가져오기
         cur.execute("""
             SELECT u.username, u.nickname 
             FROM users u
@@ -109,6 +119,9 @@ def index():
             WHERE f.follower = %s AND u.is_active = TRUE
         """, (user,))
         all_users = cur.fetchall()
+    else:
+        # 로그인하지 않은 사람에게는 단톡방을 숨김
+        my_rooms = []
         
     cur.close()
     conn.close()
