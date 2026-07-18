@@ -232,21 +232,25 @@ def dm_chat(username):
     conn.close()
     return render_template('dm.html', receiver=receiver, messages=messages)
 
-# 👥 단톡방 생성 기능
+# 👥 내가 팔로우한 사람만 초대해서 단톡방 생성하는 기능
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
     user = session.get('user')
     if not user:
         return redirect(url_for('login'))
         
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
     if request.method == 'POST':
         room_name = request.form.get('room_name', '').strip()
+        invited_users = request.form.getlist('invited_users') # 체크박스로 선택된 팔로우 목록
+        
         if not room_name:
             return "방 이름을 입력해주세요.", 400
             
-        conn = get_db_connection()
-        cur = conn.cursor()
         try:
+            # 1. 단톡방 기본 정보 삽입 (현재 users 테이블 구조상 created_by는 username을 참조함)
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
             row = cur.fetchone()
             
@@ -255,17 +259,44 @@ def create_group():
             else:
                 room_id = row[0]
                 
+            # 2. 방 만든 사람(나)을 방 멤버로 추가
+            cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, user))
+            
+            # 3. 체크된 팔로우들을 방 멤버로 추가
+            for invited_user in invited_users:
+                if invited_user != user: # 나 중복 추가 방지
+                    cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, invited_user))
+                    
             conn.commit()
             cur.close()
             conn.close()
             return redirect(url_for('group_chat', room_id=room_id))
+            
         except Exception as e:
             conn.rollback()
             cur.close()
             conn.close()
             return f"단톡방 생성 중 오류가 발생했습니다: {str(e)}", 500
             
-    return render_template('create_group.html')
+    # GET 요청 시: '내가 팔로우한 유저 목록'만 불러와서 보여줌
+    try:
+        # 현재 DB 구조(follows 테이블의 follower/following 및 users 테이블의 username)에 맞춘 쿼리
+        query = """
+            SELECT u.username, u.nickname 
+            FROM follows f
+            JOIN users u ON f.following = u.username
+            WHERE f.follower = %s AND u.is_active = TRUE
+        """
+        cur.execute(query, (user,))
+        user_list = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        cur.close()
+        conn.close()
+        user_list = []
+        
+    return render_template('create_group.html', user_list=user_list)
 
 # 🏛️ 단톡방 채팅 내부 기능
 @app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
