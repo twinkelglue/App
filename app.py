@@ -88,7 +88,20 @@ def init_db():
 
 # 앱 시작 시 DB 초기화 (새로운 DM 테이블이 자동으로 만들어집니다)
 init_db()
-
+# ⏱️ 유저가 활동할 때마다 마지막 접속 시간(last_seen) 갱신
+@app.before_request
+def update_last_seen():
+    user = session.get('user')
+    if user:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE username = %s", (user,))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except:
+            pass
 # ✨ 새로 교체할 메인 홈 코드
 @app.route('/')
 def index():
