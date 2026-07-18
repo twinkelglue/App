@@ -235,12 +235,13 @@ def dm_chat(username):
 # 👥 단톡방 생성 기능
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
-  user = session.get('user')
-  if not user: return redirect(url_for('login'))
+    user = session.get('user')
+    if not user:
+        return redirect(url_for('login'))
         
-  if request.method == 'POST':
-    room_name = request.form.get('room_name', '').strip()
-    if not room_name:
+    if request.method == 'POST':
+        room_name = request.form.get('room_name', '').strip()
+        if not room_name:
             return "방 이름을 입력해주세요.", 400
             
         conn = get_db_connection()
