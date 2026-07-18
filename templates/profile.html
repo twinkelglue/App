@@ -6,7 +6,7 @@
     <title>{{ target_user['username'] }}님의 프로필</title>
     <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { 
+body { 
             background-color: #fafafa; 
             color: #262626; 
             font-family: 'Pretendard', sans-serif; 
@@ -18,9 +18,9 @@
             margin: 30px auto; 
             background: #ffffff; 
             padding: 24px; 
-            border-radius: 16px; 
+            border-radius: 12px; 
             border: 1px solid #dbdbdb; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
+            box-shadow: none; 
         }
         .nav-back {
             display: inline-block;
@@ -29,6 +29,9 @@
             font-size: 0.9rem;
             text-decoration: none;
             font-weight: 600;
+        }
+        .nav-back:hover {
+            color: #0095f6;
         }
         /* 인스타 감성 동그란 프로필 영역 */
         .profile-header {
@@ -57,8 +60,8 @@
         }
         .username-title {
             font-size: 1.4rem;
-            font-weight: 800;
-            color: #000000;
+            font-weight: 700;
+            color: #262626;
             margin: 0 0 8px 0;
             letter-spacing: -0.5px;
         }
@@ -66,15 +69,14 @@
             display: flex;
             gap: 15px;
             font-size: 0.9rem;
-            color: #262626;
+            color: #737373;
             margin-bottom: 12px;
         }
-        .stats-area b { color: #000; }
+        .stats-area b { color: #262626; }
         .bio-text {
             font-size: 0.95rem;
-            color: #4b4b4b;
+            color: #262626;
             margin: 4px 0;
-            font-style: italic;
         }
 
         /* 인스타 설정 박스 스타일 */
@@ -88,9 +90,9 @@
         .section-card h3 {
             margin-top: 0;
             margin-bottom: 12px;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 700;
-            color: #000;
+            color: #262626;
         }
         
         input[type="text"], textarea { 
@@ -111,16 +113,20 @@
         }
 
         button { 
-            background: #000000; 
+            background: #0095f6; 
             color: #ffffff; 
             border: none; 
-            padding: 12px; 
+            padding: 10px 12px; 
             font-weight: 600; 
             border-radius: 8px; 
             cursor: pointer; 
             font-size: 0.9rem; 
             width: 100%; 
             margin-top: 8px; 
+            transition: background 0.15s ease;
+        }
+        button:hover {
+            background: #1877f2;
         }
         .btn-blue {
             background: #0095f6;
@@ -128,26 +134,25 @@
         }
         .btn-blue:hover { background: #1877f2; }
         .btn-outline {
-            background: #ffffff;
+            background: #efefef;
             color: #262626;
-            border: 1px solid #dbdbdb;
+            border: none;
         }
-        .btn-outline:hover { background: #fafafa; }
+        .btn-outline:hover { background: #dbdbdb; }
 
         /* 에스크 질문 피드 카드 스타일 */
         .feed-item {
             background: #ffffff;
-            border: 1px solid #e1e1e1;
+            border: 1px solid #dbdbdb;
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 12px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.01);
         }
-        .q-box { font-weight: 700; color: #000; font-size: 0.95rem; margin-bottom: 8px; }
+        .q-box { font-weight: 700; color: #262626; font-size: 0.95rem; margin-bottom: 8px; }
         .q-box::before { content: "Q. "; color: #0095f6; }
-        .a-box { font-size: 0.95rem; color: #262626; line-height: 1.4; background: #fafafa; padding: 10px; border-radius: 8px; }
+        .a-box { font-size: 0.95rem; color: #262626; line-height: 1.4; background: #fafafa; padding: 10px; border-radius: 8px; border: 1px solid #efefef; }
         .a-box::before { content: "A. "; font-weight: bold; color: #ed4956; }
-        .no-answer { font-size: 0.85rem; color: #8e8e8e; font-style: italic; }
+        .no-answer { font-size: 0.85rem; color: #737373; font-style: italic; margin: 4px 0; }
     </style>
 </head>
 <body>
