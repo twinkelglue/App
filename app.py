@@ -239,8 +239,8 @@ def create_group():
   if not user: return redirect(url_for('login'))
         
   if request.method == 'POST':
-      room_name = request.form.get('room_name', '').strip()
-        if not room_name:
+    room_name = request.form.get('room_name', '').strip()
+    if not room_name:
             return "방 이름을 입력해주세요.", 400
             
         conn = get_db_connection()
