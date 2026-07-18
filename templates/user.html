@@ -5,17 +5,100 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatClub - {{ profile_user.username }}</title>
     <style>
-        body { background-color: #121212; color: #ffffff; font-family: '-apple-system', sans-serif; padding: 20px; }
-        .container { max-width: 450px; margin: 30px auto; background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #363636; }
-        .profile-header { text-align: center; margin-bottom: 25px; }
-        .avatar { width: 90px; height: 90px; border-radius: 50%; border: 2px solid #363636; object-fit: cover; }
-        input[type="text"], textarea { width: 100%; padding: 12px; border: 1px solid #363636; border-radius: 8px; background: #262626; color: white; box-sizing: border-box; outline: none; margin-bottom: 10px; font-size:0.9rem; }
-        input[type="text"]:focus, textarea:focus { border-color: #0095f6; }
-        button { background: #0095f6; color: white; border: none; padding: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; width: 100%; font-size:0.9rem; }
-        .btn-alt { background: #262626; color: #ffffff; border: 1px solid #363636; }
-        .msg-box { background: #262626; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #363636; position: relative; }
-        .unread-badge { background: #ed4956; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; position: absolute; top: 12px; right: 12px; font-weight: bold; }
-        a { color: #0095f6; text-decoration: none; font-size:0.9rem; }
+<style>
+        body { 
+            background-color: #fafafa; 
+            color: #262626; 
+            font-family: 'Pretendard', -apple-system, sans-serif; 
+            padding: 20px; 
+            margin: 0; 
+        }
+        .container { 
+            max-width: 450px; 
+            margin: 30px auto; 
+            background: #ffffff; 
+            padding: 25px; 
+            border-radius: 12px; 
+            border: 1px solid #dbdbdb; 
+            box-sizing: border-box;
+        }
+        .profile-header { 
+            text-align: center; 
+            margin-bottom: 25px; 
+        }
+        .avatar { 
+            width: 90px; 
+            height: 90px; 
+            border-radius: 50%; 
+            border: 1px solid #dbdbdb; 
+            object-fit: cover; 
+        }
+        input[type="text"], textarea { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid #dbdbdb; 
+            border-radius: 8px; 
+            background: #fafafa;
+            color: #262626;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            outline: none;
+        }
+        input[type="text"]:focus, textarea:focus { 
+            border-color: #a8a8a8; 
+            background: #ffffff;
+        }
+        button { 
+            background: #0095f6; 
+            color: white; 
+            border: none; 
+            padding: 12px; 
+            font-weight: 600; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 0.9rem;
+            width: 100%;
+            transition: background 0.15s ease;
+        }
+        button:hover {
+            background: #1877f2;
+        }
+        .btn-alt { 
+            background: #efefef; 
+            color: #262626; 
+            border: none; 
+        }
+        .btn-alt:hover {
+            background: #dbdbdb;
+        }
+        /* 메시지 박스 */
+        .msg-box { 
+            background: #fafafa; 
+            padding: 15px; 
+            border-radius: 12px; 
+            margin-bottom: 15px; 
+            border: 1px solid #efefef;
+            color: #262626;
+        }
+        /* 알림 배지 */
+        .unread-badge { 
+            background: #ed4956; 
+            color: white; 
+            font-size: 0.75rem; 
+            padding: 3px 7px; 
+            border-radius: 10px; 
+            font-weight: 600;
+        }
+        a { 
+            color: #0095f6; 
+            text-decoration: none; 
+            font-size: 0.9rem; 
+            font-weight: 600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
     </style>
 </head>
 <body>
