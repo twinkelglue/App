@@ -11,14 +11,13 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
 DATABASE_URL = os.environ.get("DATABASE_URL", "your_neon_db_connection_string_here")
 
 def get_db_connection():
-    # 최신 psycopg 버전 문법에 맞추어 dict_row 형태로 연결합니다.
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블 (7번 조건: 탈퇴/재가입 처리를 위한 is_active)
+    # 1. 유저 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username VARCHAR(50) PRIMARY KEY,
@@ -33,13 +32,14 @@ def init_db():
     # 2. 팔로우 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS follows (
+            column_id SERIAL PRIMARY KEY, -- 임시 기본키 방지용
             follower VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
             following VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
-            PRIMARY KEY (follower, following)
+            UNIQUE (follower, following)
         );
     """)
     
-    # 3. 익명 에스크 메시지 테이블 (5번 조건: 읽음 표시 기능)
+    # 3. 익명 에스크 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ask_messages (
             id SERIAL PRIMARY KEY,
@@ -60,7 +60,7 @@ def init_db():
         );
     """)
     
-    # 5. 단톡방 메시지 테이블 (6번 조건: 실시간 채팅 연결)
+    # 5. 단톡방 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS room_messages (
             id SERIAL PRIMARY KEY,
@@ -70,25 +70,46 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+    # 6. [추가] 1:1 개인톡(DM) 메시지 테이블
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS direct_messages (
+            id SERIAL PRIMARY KEY,
+            sender VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+            receiver VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+            message TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
     
     conn.commit()
     cur.close()
     conn.close()
 
+# 앱 시작 시 DB 초기화 (새로운 DM 테이블이 자동으로 만들어집니다)
 init_db()
 
 @app.route('/')
 def index():
     user = session.get('user')
     my_rooms = []
+    all_users = []
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 모든 단톡방 리스트 가져오기
+    cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
+    my_rooms = cur.fetchall()
+    
+    # 나를 제외하고 대화할 수 있는 전체 유저 목록 가져오기 (개인톡 타겟용)
     if user:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
-        my_rooms = cur.fetchall()
-        cur.close()
-        conn.close()
-    return render_template('index.html', my_rooms=my_rooms)
+        cur.execute("SELECT username, nickname FROM users WHERE username != %s AND is_active = TRUE", (user,))
+        all_users = cur.fetchall()
+        
+    cur.close()
+    conn.close()
+    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, user=user)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -107,7 +128,6 @@ def register():
         existing = cur.fetchone()
         
         if existing:
-            # 7번 조건: 기존 회원이었으나 탈퇴(is_active=False) 상태였던 아이디 재가입 승인
             if existing['is_active'] == False:
                 cur.execute("""
                     UPDATE users 
@@ -157,7 +177,6 @@ def logout():
     session.pop('user', None)
     return redirect(url_for('index'))
 
-# 7번 조건: 회원 탈퇴 기능 처리
 @app.route('/delete_account', methods=['POST'])
 def delete_account():
     user = session.get('user')
@@ -175,6 +194,88 @@ def delete_account():
     session.pop('user', None)
     return redirect(url_for('index'))
 
+# 💬 [새로 추가] 1:1 개인톡(DM) 기능 라우팅
+@app.route('/chat/dm/<username>', methods=['GET', 'POST'])
+def dm_chat(username):
+    my_id = session.get('user')
+    if not my_id: return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 대화 상대방 정보 가져오기
+    cur.execute("SELECT username, nickname FROM users WHERE username = %s AND is_active = TRUE", (username,))
+    receiver = cur.fetchone()
+    if not receiver:
+        cur.close()
+        conn.close()
+        return "존재하지 않거나 탈퇴한 회원입니다.", 404
+        
+    if request.method == 'POST':
+        message = request.form.get('message', '').strip()
+        if message:
+            cur.execute("INSERT INTO direct_messages (sender, receiver, message) VALUES (%s, %s, %s)", (my_id, username, message))
+            conn.commit()
+            return redirect(url_for('dm_chat', username=username))
+            
+    # 나와 상대방이 주고받은 대화 내역 전체 가져오기
+    cur.execute("""
+        SELECT sender, message, created_at FROM direct_messages 
+        WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
+        ORDER BY id ASC
+    """, (my_id, username, username, my_id))
+    messages = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    return render_template('dm.html', receiver=receiver, messages=messages)
+
+# 👥 단톡방 생성 기능
+@app.route('/group/create', methods=['GET', 'POST'])
+def create_group():
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+        
+    if request.method == 'POST':
+        room_name = request.form.get('room_name', '').strip()
+        if room_name:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
+            room_id = cur.fetchone()['id']
+            conn.commit()
+            cur.close()
+            conn.close()
+            return redirect(url_for('group_chat', room_id=room_id))
+    return render_template('create_group.html')
+
+# 🏛️ 단톡방 채팅 내부 기능
+@app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
+def group_chat(room_id):
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+        
+    if request.method == 'POST':
+        message = request.form.get('message', '').strip()
+        if message:
+            cur.execute("INSERT INTO room_messages (room_id, sender, message) VALUES (%s, %s, %s)", (room_id, user, message))
+            conn.commit()
+            return redirect(url_for('group_chat', room_id=room_id))
+                
+    cur.execute("SELECT room_name FROM chat_rooms WHERE id = %s", (room_id,))
+    room = cur.fetchone()
+        
+    cur.execute("SELECT sender, message, created_at FROM room_messages WHERE room_id = %s ORDER BY id ASC", (room_id,))
+    messages = cur.fetchall()
+        
+    cur.close()
+    conn.close()
+    return render_template('chat.html', room=room, room_id=room_id, messages=messages)
+
+# 기존 에스크/검색/프로필 라우팅 유지
 @app.route('/search')
 def search():
     query = request.args.get('query', '').strip()
@@ -200,12 +301,10 @@ def user_profile(username):
         conn.close()
         return "존재하지 않거나 탈퇴한 유저입니다.", 404
         
-    # 본인 프로필 확인 시 읽음 상태로 업데이트 처리 (5번 조건)
     if session.get('user') == username:
         cur.execute("UPDATE ask_messages SET is_read = TRUE WHERE target_user = %s", (username,))
         conn.commit()
 
-    # dict_row 환경 오류 방지를 위해 AS cnt 부여 및 딕셔너리 키로 접근하도록 수정
     cur.execute("SELECT COUNT(*) AS cnt FROM follows WHERE following = %s", (username,))
     followers_count = cur.fetchone()['cnt']
     
@@ -224,27 +323,21 @@ def user_profile(username):
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     user = session.get('user')
-    if not user:
-        return redirect(url_for('login'))
-        
+    if not user: return redirect(url_for('login'))
     bio = request.form.get('bio', '')
     profile_img = request.files.get('profile_img')
-    
     conn = get_db_connection()
     cur = conn.cursor()
-    
     if profile_img and profile_img.filename != '':
         filename = f"{user}_{profile_img.filename}"
         try:
-            if not os.path.exists('static'):
-                os.makedirs('static')
+            if not os.path.exists('static'): os.makedirs('static')
             profile_img.save(os.path.join('static', filename))
             cur.execute("UPDATE users SET bio = %s, profile_img = %s WHERE username = %s", (bio, filename, user))
-        except Exception as e:
+        except:
             cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
     else:
         cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
-        
     conn.commit()
     cur.close()
     conn.close()
@@ -291,7 +384,6 @@ def delete_message(msg_id):
 def follow(username):
     user = session.get('user')
     if not user: return redirect(url_for('login'))
-        
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM follows WHERE follower = %s AND following = %s", (user, username))
@@ -303,49 +395,6 @@ def follow(username):
     cur.close()
     conn.close()
     return redirect(url_for('user_profile', username=username))
-
-@app.route('/group/create', methods=['GET', 'POST'])
-def create_group():
-    user = session.get('user')
-    if not user: return redirect(url_for('login'))
-        
-    if request.method == 'POST':
-        room_name = request.form.get('room_name').strip()
-        if room_name:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
-            # dict_row 환경에 맞게 딕셔너리 키['id']로 가져오도록 수정
-            room_id = cur.fetchone()['id']
-            conn.commit()
-            cur.close()
-            conn.close()
-            return redirect(url_for('group_chat', room_id=room_id))
-    return render_template('create_group.html')
-
-@app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
-def group_chat(room_id):
-    user = session.get('user')
-    if not user: return redirect(url_for('login'))
-        
-    conn = get_db_connection()
-    cur = conn.cursor()
-        
-    if request.method == 'POST':
-        message = request.form.get('message').strip()
-        if message:
-            cur.execute("INSERT INTO room_messages (room_id, sender, message) VALUES (%s, %s, %s)", (room_id, user, message))
-            conn.commit()
-                
-    cur.execute("SELECT room_name FROM chat_rooms WHERE id = %s", (room_id,))
-    room = cur.fetchone()
-        
-    cur.execute("SELECT sender, message, created_at FROM room_messages WHERE room_id = %s ORDER BY id ASC", (room_id,))
-    messages = cur.fetchall()
-        
-    cur.close()
-    conn.close()
-    return render_template('chat.html', room=room, room_id=room_id, messages=messages)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
