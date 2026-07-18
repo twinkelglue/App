@@ -7,20 +7,17 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
 
-# Neon DB 연동 설정 (환경 변수 사용 권장)
+# Neon DB 연동 설정
 DATABASE_URL = os.environ.get("DATABASE_URL", "your_neon_db_connection_string_here")
 
 def get_db_connection():
-    # DictCursor를 사용하여 HTML 템플릿에서 컬럼명(속성)으로 접근 가능하게 합니다.
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
-    return conn
+    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
 
-# 데이터베이스 초기화 및 영구 테이블 구성
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블 (탈퇴 처리를 위해 is_active 컬럼 도입)
+    # 1. 유저 테이블 (7번 조건: 탈퇴/재가입 처리를 위한 is_active)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username VARCHAR(50) PRIMARY KEY,
@@ -41,7 +38,7 @@ def init_db():
         );
     """)
     
-    # 3. 익명 에스크 메시지 테이블 (읽음 표시 기능 추가)
+    # 3. 익명 에스크 메시지 테이블 (5번 조건: 읽음 표시 기능)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ask_messages (
             id SERIAL PRIMARY KEY,
@@ -62,7 +59,7 @@ def init_db():
         );
     """)
     
-    # 5. 단톡방 메시지 테이블 (읽음 표시 및 추적용 카운트 간소화)
+    # 5. 단톡방 메시지 테이블 (6번 조건: 실시간 채팅 연결)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS room_messages (
             id SERIAL PRIMARY KEY,
@@ -86,14 +83,13 @@ def index():
     if user:
         conn = get_db_connection()
         cur = conn.cursor()
-        # 사용자가 만든 방 목록 가져오기
-        cur.execute("SELECT id, room_name FROM chat_rooms WHERE created_by = %s ORDER BY id DESC", (user,))
+        # 사용자가 생성했거나 참여할 수 있는 전체 방 목록을 불러옵니다.
+        cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
         my_rooms = cur.fetchall()
         cur.close()
         conn.close()
     return render_template('index.html', my_rooms=my_rooms)
 
-@app.route('/register', models=['GET', 'POST'])
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -107,13 +103,12 @@ def register():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 탈퇴 이력이 있는 유저가 재가입하려는 경우 체크
         cur.execute("SELECT is_active FROM users WHERE username = %s", (username,))
         existing = cur.fetchone()
         
         if existing:
+            # 7번 조건: 기존 회원이었으나 탈퇴(is_active=False) 상태였던 아이디 재가입 승인
             if existing['is_active'] == False:
-                # 7번 조건: 재가입 시 계정 상태 활성화 및 데이터 리셋
                 cur.execute("""
                     UPDATE users 
                     SET password = %s, nickname = %s, bio = '안녕하세요! ChatClub입니다.', profile_img = 'default.png', is_active = TRUE 
@@ -145,7 +140,6 @@ def login():
         
         conn = get_db_connection()
         cur = conn.cursor()
-        # 활성화(is_active=True)된 회원만 로그인 가능
         cur.execute("SELECT * FROM users WHERE username = %s AND password = %s AND is_active = TRUE", (username, password))
         user = cur.fetchone()
         cur.close()
@@ -163,7 +157,7 @@ def logout():
     session.pop('user', None)
     return redirect(url_for('index'))
 
-# 7번 조건: 회원 탈퇴 라우터 구현
+# 7번 조건: 회원 탈퇴 기능 처리
 @app.route('/delete_account', methods=['POST'])
 def delete_account():
     user = session.get('user')
@@ -172,9 +166,7 @@ def delete_account():
         
     conn = get_db_connection()
     cur = conn.cursor()
-    # 소프트 딜리트를 처리하여 향후 동일 ID 재가입이 매끄럽게 처리되도록 비활성화
     cur.execute("UPDATE users SET is_active = FALSE WHERE username = %s", (user,))
-    # 연관된 대화방 기록 정리 필요 시 처리
     cur.execute("DELETE FROM follows WHERE follower = %s OR following = %s", (user, user))
     conn.commit()
     cur.close()
@@ -208,28 +200,57 @@ def user_profile(username):
         conn.close()
         return "존재하지 않거나 탈퇴한 유저입니다.", 404
         
-    # 에스크 질문 읽음 처리 (내 프로필을 내가 직접 조회할 때)
+    # 본인 프로필 확인 시 읽음 상태로 업데이트 처리 (5번 조건)
     if session.get('user') == username:
         cur.execute("UPDATE ask_messages SET is_read = TRUE WHERE target_user = %s", (username,))
         conn.commit()
 
-    # 팔로워 카운트
     cur.execute("SELECT COUNT(*) FROM follows WHERE following = %s", (username,))
     followers_count = cur.fetchone()[0]
     
-    # 나를 팔로우 중인지 여부
     is_following = False
     if session.get('user'):
         cur.execute("SELECT 1 FROM follows WHERE follower = %s AND following = %s", (session['user'], username))
         is_following = cur.fetchone() is not None
         
-    # 익명 메일 피드 리스트 가져오기
     cur.execute("SELECT * FROM ask_messages WHERE target_user = %s ORDER BY id DESC", (username,))
     messages = cur.fetchall()
     
     cur.close()
     conn.close()
     return render_template('user.html', profile_user=profile_user, followers_count=followers_count, is_following=is_following, messages=messages)
+
+# 기존 사용중이던 프로필 정보 변경 완벽 보존
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    user = session.get('user')
+    if not user:
+        return redirect(url_for('login'))
+        
+    bio = request.form.get('bio', '')
+    profile_img = request.files.get('profile_img')
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if profile_img and profile_img.filename != '':
+        filename = f"{user}_{profile_img.filename}"
+        # 파일 수신 시 static 폴더가 없을 경우 자동 생성하여 저장 진행
+        try:
+            if not os.path.exists('static'):
+                os.makedirs('static')
+            profile_img.save(os.path.join('static', filename))
+            cur.execute("UPDATE users SET bio = %s, profile_img = %s WHERE username = %s", (bio, filename, user))
+        except Exception as e:
+            # 업로드 에러 방지용 안전 장치
+            cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
+    else:
+        cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
+        
+    conn.commit()
+    cur.close()
+    conn.close()
+    return redirect(url_for('user_profile', username=user))
 
 @app.route('/ask/<username>', methods=['POST'])
 def ask(username):
@@ -303,7 +324,6 @@ def create_group():
             return redirect(url_for('group_chat', room_id=room_id))
     return render_template('create_group.html')
 
-# 5, 6번 조건: 읽음 유무를 포함하는 매끄러운 그룹 단톡방 구현
 @app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
 def group_chat(room_id):
     user = session.get('user')
