@@ -101,10 +101,13 @@ def index():
     # 모든 단톡방 리스트 가져오기
     cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
     my_rooms = cur.fetchall()
-    
-    # 나를 제외하고 대화할 수 있는 전체 유저 목록 가져오기 (개인톡 타겟용)
     if user:
-        cur.execute("SELECT username, nickname FROM users WHERE username != %s AND is_active = TRUE", (user,))
+        cur.execute("""
+            SELECT u.username, u.nickname 
+            FROM users u
+            JOIN follows f ON u.username = f.following
+            WHERE f.follower = %s AND u.is_active = TRUE
+        """, (user,))
         all_users = cur.fetchall()
         
     cur.close()
