@@ -1,6 +1,6 @@
 import os
 from flask import Flask, render_template, request, redirect, session, url_for, flash
-import psycopg2
+import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
 
