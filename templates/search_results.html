@@ -1,22 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>검색 결과</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatClub - 검색 결과</title>
+    <style>
+        body { background-color: #121212; color: #ffffff; font-family: '-apple-system', BlinkMacSystemFont, sans-serif; padding: 20px; }
+        .container { max-width: 450px; margin: 40px auto; background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #363636; }
+        h2 { font-size: 1.3rem; margin-bottom: 20px; font-weight: 600; }
+        .btn-home { display: block; text-align: center; color: #a8a8a8; margin-bottom: 20px; text-decoration: none; font-size:0.9rem; }
+        .user-item { background: #262626; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #363636; }
+        .username { font-weight: bold; color: #ffffff; }
+        .nickname { color: #a8a8a8; font-size: 0.85rem; margin-left: 6px; }
+        .btn-visit { color: #0095f6; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
+    </style>
 </head>
 <body>
-    <h2>'{{ query }}' 검색 결과</h2>
-    <p><a href="/">🏠 메인 홈으로</a></p>
-    <hr>
-    {% if results %}
-        <ul>
-        {% for user in results %}
-            <li>
-                <a href="/user/{{ user[0] }}"><b>{{ user[0] }}</b></a> - {{ user[1] }}
-            </li>
-        {% endfor %}
-        </ul>
-    {% else %}
-        <p>검색된 사용자가 없습니다.</p>
-    {% endif %}
+    <div class="container">
+        <h2>🔍 '{{ query }}' 검색결과</h2>
+        <a href="/" class="btn-home">🏠 메인 홈화면으로</a>
+        <hr style="border:0; border-top:1px solid #363636; margin-bottom:20px;">
+        
+        {% if results %}
+            {% for user in results %}
+                <div class="user-item">
+                    <div>
+                        <span class="username">@{{ user.username }}</span>
+                        <span class="nickname">({{ user.nickname }})</span>
+                    </div>
+                    <a href="/user/{{ user.username }}" class="btn-visit">프로필 방문</a>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="color:#737373; text-align:center; font-size:0.9rem; padding:20px 0;">검색 결과 일치하는 유저가 없습니다.</p>
+        {% endif %}
+    </div>
 </body>
 </html>
