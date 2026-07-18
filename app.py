@@ -124,12 +124,14 @@ def index():
         cur.execute(query_rooms, (user, user))
         my_rooms = cur.fetchall()
         
-        # 내가 팔로우한 유저 리스트 가져오기
+        # 🟢 [교체완료] 내가 팔로우한 유저 리스트 + 온라인 상태 여부 가져오기
         cur.execute("""
-            SELECT u.username, u.nickname 
+            SELECT u.username, u.nickname,
+                   CASE WHEN u.last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes' THEN TRUE ELSE FALSE END as is_online
             FROM users u
             JOIN follows f ON u.username = f.following
             WHERE f.follower = %s AND u.is_active = TRUE
+            ORDER BY is_online DESC, u.nickname ASC
         """, (user,))
         all_users = cur.fetchall()
     else:
@@ -223,7 +225,7 @@ def delete_account():
     session.pop('user', None)
     return redirect(url_for('index'))
 
-# 💬 [새로 추가] 1:1 개인톡(DM) 기능 라우팅
+## 💬 1:1 개인톡(DM) 기능 라우팅 (수신 확인 & 1 표시 연동 버전)
 @app.route('/chat/dm/<username>', methods=['GET', 'POST'])
 def dm_chat(username):
     my_id = session.get('user')
@@ -239,6 +241,14 @@ def dm_chat(username):
         conn.close()
         return "존재하지 않거나 탈퇴한 회원입니다.", 404
         
+    # 📑 [추가] 내가 이 방에 들어왔으므로, 상대방이 나에게 보낸 메시지를 전부 읽음(TRUE) 처리
+    cur.execute("""
+        UPDATE direct_messages 
+        SET is_read = TRUE 
+        WHERE sender = %s AND receiver = %s AND is_read = FALSE
+    """, (username, my_id))
+    conn.commit()
+        
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
         if message:
@@ -246,9 +256,9 @@ def dm_chat(username):
             conn.commit()
             return redirect(url_for('dm_chat', username=username))
             
-    # 나와 상대방이 주고받은 대화 내역 전체 가져오기
+    # [수정] 나와 상대방이 주고받은 대화 내역 + 읽음 여부(is_read) 가져오기
     cur.execute("""
-        SELECT sender, message, created_at FROM direct_messages 
+        SELECT sender, message, created_at, is_read FROM direct_messages 
         WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
         ORDER BY id ASC
     """, (my_id, username, username, my_id))
