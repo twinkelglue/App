@@ -12,81 +12,34 @@
         .bubble { margin-bottom: 12px; max-width: 75%; padding: 12px; border-radius: 15px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
         .bubble.me { background: #adff2f; color: #000; margin-left: auto; border-top-right-radius: 2px; }
         .bubble.other { background: #252535; color: #fff; margin-right: auto; border-top-left-radius: 2px; }
-        .chat-footer { padding: 10px; background: #1a1a24; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2e2e3e; }
-        .input-row { display: flex; gap: 8px; }
+        .chat-footer { padding: 10px; background: #1a1a24; display: flex; gap: 8px; border-top: 1px solid #2e2e3e; }
         input[type="text"] { flex: 1; padding: 12px; border-radius: 25px; border: 2px solid #2e2e3e; background: #252535; color: white; outline: none; }
-        .file-label { background: #252535; color: #fff; border: 2px solid #2e2e3e; padding: 10px 15px; font-weight: bold; border-radius: 25px; cursor: pointer; text-align: center; font-size: 0.9rem; }
         button { background: #adff2f; color: #000; border: none; padding: 0 20px; font-weight: bold; border-radius: 25px; cursor: pointer; }
-        .chat-img-preview { max-width: 100%; border-radius: 10px; margin-top: 5px; display: block; }
     </style>
 </head>
 <body>
     <div class="chat-container">
         <div class="chat-header">
             {{ target_name }}
-            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 홈화면</a>
-            <span style="font-size:0.75rem; color:#adff2f; margin-left:5px;">● LIVE</span>
+            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 나가기</a>
+            <a href="#" onclick="location.reload();" style="color:#adff2f; text-decoration:none; font-size:0.8rem; float:right;">🔄 갱신</a>
         </div>
         
-        <div class="chat-box" id="chat-box-div">
+        <div class="chat-box">
             {% for chat in chat_history %}
                 <div style="font-size:0.75rem; color:#888; text-align: {% if chat[0] == session['user'] %}right{% else %}left{% endif %}; margin-bottom:2px;">
                     {{ chat[0] }}
                 </div>
                 <div class="bubble {% if chat[0] == session['user'] %}me{% else %}other{% endif %}">
-                    <!-- 메시지 텍스트 렌더링 (유튜브 아이프레임 포함 가능하므로 safe 필터 적용) -->
-                    {% if chat[1] %}{{ chat[1]|safe }}{% endif %}
-                    
-                    <!-- 공유된 사진이 있는 경우 렌더링 -->
-                    {% if chat[2] %}
-                        <img src="/static/{{ chat[2] }}" class="chat-img-preview" alt="공유 사진">
-                    {% endif %}
+                    {{ chat[1] }}
                 </div>
             {% endfor %}
         </div>
         
-        <form class="chat-footer" method="post" action="" enctype="multipart/form-data">
-            <div style="display: flex; gap: 5px; align-items: center;">
-                <label for="chat_img" class="file-label">📷 사진첨부</label>
-                <input type="file" name="chat_img" id="chat_img" accept="image/*" style="display: none;" onchange="alert('사진이 선택되었습니다!')">
-            </div>
-            <div class="input-row">
-                <input type="text" name="message" id="msg-input" placeholder="메시지 또는 유튜브 링크 입력..." autocomplete="off" autofocus>
-                <button type="submit">전송</button>
-            </div>
+        <form class="chat-footer" method="post">
+            <input type="text" name="message" placeholder="메시지 입력 창..." required autocomplete="off" autofocus>
+            <button type="submit">전송</button>
         </form>
     </div>
-
-    <script>
-        const chatBox = document.getElementById('chat-box-div');
-        chatBox.scrollTop = chatBox.scrollHeight;
-
-        function fetchMessages() {
-            fetch('/api/chat_history/{{ room_type }}/{{ room_id }}')
-                .then(res => res.json())
-                .then(data => {
-                    let html = '';
-                    data.forEach(chat => {
-                        let isMe = (chat.sender === "{{ session['user'] }}");
-                        html += `<div style="font-size:0.75rem; color:#888; text-align: ${isMe ? 'right' : 'left'}; margin-bottom:2px;">${chat.sender}</div>`;
-                        html += `<div class="bubble ${isMe ? 'me' : 'other'}">`;
-                        if(chat.message) {
-                            html += chat.message;
-                        }
-                        if(chat.file_path) {
-                            html += `<img src="/static/${chat.file_path}" class="chat-img-preview" alt="공유 사진">`;
-                        }
-                        html += `</div>`;
-                    });
-                    
-                    let isBottom = (chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 80);
-                    chatBox.innerHTML = html;
-                    if(isBottom) {
-                        chatBox.scrollTop = chatBox.scrollHeight;
-                    }
-                }).catch(e => console.log("싱크 연동 대기..."));
-        }
-        setInterval(fetchMessages, 3000);
-    </script>
 </body>
 </html>
