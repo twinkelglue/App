@@ -3,23 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>ChatClub - 로그인</title>
     <style>
-        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 20px; }
-        .container { max-width: 450px; margin: 0 auto; background: #1a1a24; padding: 25px; border-radius: 20px; text-align: center; }
-        input { width: 100%; padding: 15px; border: 2px solid #2e2e3e; border-radius: 25px; background: #252535; color: white; box-sizing: border-box; outline: none; margin-bottom: 15px; }
-        button { background: #adff2f; color: #000; border: none; padding: 12px; font-weight: bold; border-radius: 25px; cursor: pointer; width: 100%; font-size:1rem; }
+        body { background-color: #121212; color: #ffffff; font-family: '-apple-system', BlinkMacSystemFont, sans-serif; padding: 20px; }
+        .container { max-width: 450px; margin: 60px auto; background: #1e1e1e; padding: 35px; border-radius: 12px; border: 1px solid #363636; text-align: center; }
+        h2 { font-size: 1.8rem; margin-bottom: 25px; font-weight:700; }
+        input { width: 100%; padding: 14px; border: 1px solid #363636; border-radius: 8px; background: #262626; color: white; box-sizing: border-box; outline: none; margin-bottom: 15px; }
+        input:focus { border-color: #0095f6; }
+        button { background: #0095f6; color: white; border: none; padding: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; font-size:1rem; }
+        button:hover { background: #1877f2; }
+        a { color:#a8a8a8; text-decoration:none; font-size:0.9rem; display:inline-block; margin-top:20px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2 style="color:#adff2f;">SIGN IN</h2>
+        <h2>ChatClub 로그인</h2>
         <form method="post">
             <input type="text" name="username" placeholder="아이디" required>
             <input type="password" name="password" placeholder="비밀번호" required>
             <button type="submit">로그인</button>
         </form>
-        <br><a href="/" style="color:#aaa; text-decoration:none;">🏠 홈으로</a>
+        <a href="/">🏠 홈으로 이동</a>
     </div>
 </body>
 </html>
