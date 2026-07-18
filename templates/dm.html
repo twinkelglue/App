@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DM - {{ receiver.nickname }}</title>
+    <style>
+        :root {
+            --bg-color: #05070a;
+            --card-bg: #121620;
+            --text-color: #ffffff;
+            --text-muted: #94a3b8;
+            --gradient-instagram: linear-gradient(135deg, #00c6ff, #0072ff, #00f260); /* 청량 파랑 초록 */
+            --border-color: #1e293b;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 500px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-color);
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            box-sizing: border-box;
+        }
+
+        /* 상단 헤더 바 */
+        .chat-header {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: rgba(5, 7, 10, 0.9);
+            backdrop-filter: blur(12px);
+        }
+
+        .chat-header .btn-back {
+            color: var(--text-color);
+            text-decoration: none;
+            font-size: 1.3rem;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+
+        .chat-header .user-info {
+            flex-grow: 1;
+        }
+
+        .chat-header .user-info .name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #ffffff;
+        }
+
+        /* 대화 메시지 구역 */
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .msg-wrapper {
+            display: flex;
+            flex-direction: column;
+            max-width: 75%;
+        }
+
+        /* 내가 보낸 메시지 디자인 */
+        .msg-wrapper.me {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        /* 상대방이 보낸 메시지 디자인 */
+        .msg-wrapper.other {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .msg-bubble {
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        /* 내 말풍선: 인스타 감성 그라데이션 */
+        .me .msg-bubble {
+            background: var(--gradient-instagram);
+            color: #ffffff; /* 흰색 글자가 잘 보이도록 배경 위에 오버레이 */
+            font-weight: 600;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 3px 10px rgba(0, 198, 255, 0.15);
+        }
+
+        /* 상대방 말풍선: 어두운 회색조 패널 */
+        .other .msg-bubble {
+            background-color: var(--card-bg);
+            color: #ffffff;
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+            padding: 0 4px;
+        }
+
+        /* 하단 전송창 고정 */
+        .chat-input-form {
+            padding: 15px 20px;
+            border-top: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input-form input {
+            flex-grow: 1;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 12px 20px;
+            color: #ffffff;
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        .chat-input-form input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .chat-input-form button {
+            background: var(--gradient-instagram);
+            color: #ffffff;
+            border: none;
+            font-weight: 700;
+            padding: 0 22px;
+            border-radius: 24px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: opacity 0.2s;
+        }
+
+        .chat-input-form button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <!-- 상단 헤더 -->
+    <div class="chat-header">
+        <a href="{{ url_for('index') }}" class="btn-back">❮</a>
+        <div class="user-info">
+            <div class="name">{{ receiver.nickname }}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">@{{ receiver.username }}님과의 1:1 디엠</div>
+        </div>
+    </div>
+
+    <!-- 스크롤 메시지 보드 -->
+    <div class="chat-messages" id="chatMessages">
+        {% if messages %}
+            {% for msg in messages %}
+                {% if msg.sender == session['user'] %}
+                    <!-- 내가 전송한 대화 내역 -->
+                    <div class="msg-wrapper me">
+                        <div class="msg-bubble">{{ msg.message }}</div>
+                        <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
+                    </div>
+                {% else %}
+                    <!-- 상대가 전송한 대화 내역 -->
+                    <div class="msg-wrapper other">
+                        <div class="msg-bubble">{{ msg.message }}</div>
+                        <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-top: 50px;">
+                🌿 청량한 대화의 첫 시작을 열어보세요!
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- 전송 폼 -->
+    <form class="chat-input-form" method="POST">
+        <input type="text" name="message" placeholder="메시지를 입력하세요..." required autocomplete="off">
+        <button type="submit">전송</button>
+    </form>
+</div>
+
+<script>
+    // 대화창 진입 시 자동으로 가장 최신 메시지가 있는 아래쪽으로 스크롤 고정
+    const chatBox = document.getElementById('chatMessages');
+    chatBox.scrollTop = chatBox.scrollHeight;
+</script>
+
+</body>
+</html>
