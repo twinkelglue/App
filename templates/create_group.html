@@ -30,15 +30,34 @@
         .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 25px; }
         .input-group { margin-bottom: 20px; text-align: left; }
         .input-group label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted); }
-        .input-group input { 
+        .input-group input[type="text"] { 
             width: 100%; padding: 14px; background-color: var(--bg-color); 
             border: 1px solid var(--border-color); border-radius: 8px; color: #fff; 
             box-sizing: border-box; outline: none; font-size: 1rem;
         }
+        
+        /* 👥 팔로우 목록 창을 위해 새로 추가한 스타일 */
+        .user-list { 
+            max-height: 180px; overflow-y: auto; background-color: var(--bg-color);
+            border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; 
+        }
+        .user-item { 
+            margin-bottom: 10px; display: flex; align-items: center; text-align: left;
+        }
+        .user-item:last-child { margin-bottom: 0; }
+        .user-item input[type="checkbox"] { 
+            margin-right: 10px; width: 16px; height: 16px; cursor: pointer;
+            accent-color: #00c6ff; /* 체크박스 포인터 색상 일치 */
+        }
+        .user-item label { 
+            display: inline; color: #fff; font-size: 0.95rem; cursor: pointer; margin: 0;
+        }
+        .no-users { color: var(--text-muted); font-size: 0.9rem; text-align: center; margin: 10px 0; }
+
         .btn-submit { 
             width: 100%; background: var(--gradient-instagram); color: #fff; 
             border: none; padding: 14px; border-radius: 8px; font-weight: 700; 
-            font-size: 1rem; cursor: pointer; 
+            font-size: 1rem; cursor: pointer; margin-top: 10px;
         }
         .btn-cancel {
             display: block; margin-top: 15px; color: var(--text-muted); 
@@ -49,13 +68,32 @@
 </head>
 <body>
 <div class="form-box">
-    <h2>새 오픈 단톡방 개설</h2>
-    <div class="subtitle">모두가 참여할 수 있는 대화방을 만듭니다.</div>
+    <h2>👥 새 비밀 단톡방 개설</h2>
+    <div class="subtitle">내가 팔로우한 사람들을 초대해 방을 만듭니다.</div>
     <form action="{{ url_for('create_group') }}" method="POST">
+        <!-- 1. 방 이름 입력 -->
         <div class="input-group">
             <label>단톡방 이름</label>
-            <input type="text" name="room_name" placeholder="예: 코딩 공부방, 일상 토크" required autocomplete="off">
+            <input type="text" name="room_name" placeholder="예: 우리만의 아지트, 단짝방" required autocomplete="off">
         </div>
+        
+        <!-- 2. [새로 추가] 팔로우한 사람들 멤버 선택 영역 -->
+        <div class="input-group">
+            <label>초대할 팔로우 선택</label>
+            <div class="user-list">
+                {% if user_list %}
+                    {% for u in user_list %}
+                        <div class="user-item">
+                            <input type="checkbox" name="invited_users" value="{{ u.username }}" id="user_{{ u.username }}">
+                            <label for="user_{{ u.username }}">{{ u.nickname }} (@{{ u.username }})</label>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-users">아직 팔로우한 유저가 없습니다.</div>
+                {% endif %}
+            </div>
+        </div>
+
         <button type="submit" class="btn-submit">🚀 단톡방 만들기</button>
     </form>
     <a href="{{ url_for('index') }}" class="btn-cancel">취소하고 돌아가기</a>
