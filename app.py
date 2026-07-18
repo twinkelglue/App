@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template, request, redirect, session, url_for, flash
-import psycopg2
-from psycopg2.extras import DictCursor
+import psycopg
+from psycopg.rows import dict_row
 from datetime import datetime
 
 app = Flask(__name__)
@@ -11,7 +11,8 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
 DATABASE_URL = os.environ.get("DATABASE_URL", "your_neon_db_connection_string_here")
 
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
+    # 최신 psycopg 버전 문법에 맞추어 dict_row 형태로 연결합니다.
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def init_db():
     conn = get_db_connection()
@@ -83,7 +84,6 @@ def index():
     if user:
         conn = get_db_connection()
         cur = conn.cursor()
-        # 사용자가 생성했거나 참여할 수 있는 전체 방 목록을 불러옵니다.
         cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
         my_rooms = cur.fetchall()
         cur.close()
@@ -220,7 +220,6 @@ def user_profile(username):
     conn.close()
     return render_template('user.html', profile_user=profile_user, followers_count=followers_count, is_following=is_following, messages=messages)
 
-# 기존 사용중이던 프로필 정보 변경 완벽 보존
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     user = session.get('user')
@@ -235,14 +234,12 @@ def update_profile():
     
     if profile_img and profile_img.filename != '':
         filename = f"{user}_{profile_img.filename}"
-        # 파일 수신 시 static 폴더가 없을 경우 자동 생성하여 저장 진행
         try:
             if not os.path.exists('static'):
                 os.makedirs('static')
             profile_img.save(os.path.join('static', filename))
             cur.execute("UPDATE users SET bio = %s, profile_img = %s WHERE username = %s", (bio, filename, user))
         except Exception as e:
-            # 업로드 에러 방지용 안전 장치
             cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
     else:
         cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
@@ -349,4 +346,5 @@ def group_chat(room_id):
     return render_template('chat.html', room=room, room_id=room_id, messages=messages)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
