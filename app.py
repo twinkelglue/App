@@ -12,7 +12,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "your_neon_db_connection_string_he
 
 def get_db_connection():
     # 최신 psycopg 버전 문법에 맞추어 dict_row 형태로 연결합니다.
-    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+  return psycopg.connect(DATABASE_URL, row_factory=dict_row, context=psycopg.compat.adapters)
 
 def init_db():
     conn = get_db_connection()
