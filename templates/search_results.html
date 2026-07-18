@@ -5,14 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatClub - 검색 결과</title>
     <style>
-        body { background-color: #121212; color: #ffffff; font-family: '-apple-system', BlinkMacSystemFont, sans-serif; padding: 20px; }
-        .container { max-width: 450px; margin: 40px auto; background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #363636; }
-        h2 { font-size: 1.3rem; margin-bottom: 20px; font-weight: 600; }
-        .btn-home { display: block; text-align: center; color: #a8a8a8; margin-bottom: 20px; text-decoration: none; font-size:0.9rem; }
-        .user-item { background: #262626; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #363636; }
-        .username { font-weight: bold; color: #ffffff; }
-        .nickname { color: #a8a8a8; font-size: 0.85rem; margin-left: 6px; }
-        .btn-visit { color: #0095f6; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
+     <style>
+        body { 
+            background-color: #fafafa; 
+            color: #262626; 
+            font-family: 'Pretendard', -apple-system, sans-serif; 
+            padding: 20px; 
+            margin: 0; 
+        }
+        .container { 
+            max-width: 420px; 
+            margin: 30px auto; 
+            background: #ffffff; 
+            padding: 24px; 
+            border-radius: 12px; 
+            border: 1px solid #dbdbdb; 
+            box-sizing: border-box;
+        }
+        h2 { 
+            font-size: 1.3rem; 
+            margin-bottom: 20px; 
+            font-weight: 700; 
+            color: #262626;
+            letter-spacing: -0.5px;
+        }
+        .btn-home { 
+            display: inline-block; 
+            margin-bottom: 20px; 
+            color: #737373; 
+            font-size: 0.9rem;
+            text-decoration: none; 
+            font-weight: 600;
+        }
+        .btn-home:hover {
+            color: #0095f6;
+        }
+        /* 유저 검색 목록 카드 */
+        .user-item { 
+            background: #ffffff; 
+            padding: 14px 16px; 
+            border-radius: 12px; 
+            margin-bottom: 10px; 
+            border: 1px solid #dbdbdb;
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+        }
+        .username { 
+            font-weight: 700; 
+            color: #262626; 
+            font-size: 0.95rem;
+        }
+        .nickname { 
+            color: #737373; 
+            font-size: 0.85rem; 
+            margin-left: 6px; 
+        }
+        /* 프로필 방문 버튼 */
+        .btn-visit { 
+            color: #ffffff; 
+            background-color: #0095f6;
+            font-weight: 600; 
+            text-decoration: none; 
+            font-size: 0.85rem; 
+            padding: 6px 14px;
+            border-radius: 8px;
+            transition: background 0.15s ease;
+        }
+        .btn-visit:hover {
+            background-color: #1877f2;
+        }
+    </style>
     </style>
 </head>
 <body>
