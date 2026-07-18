@@ -2,98 +2,79 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ profile_user[0] }}의 에스크</title>
-    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        body { background-color: #0b0b0b; color: #fff; font-family: 'Pretendard', sans-serif; margin: 0; padding: 20px; }
-        .profile-container { max-width: 500px; margin: 40px auto; background: #151515; padding: 30px; border-radius: 24px; border: 1px solid #222; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .avatar { width: 90px; height: 90px; border-radius: 50%; border: 3px solid #adff2f; background: #222; display: inline-flex; align-items: center; justify-content: center; font-size: 2rem; color: #adff2f; box-shadow: 0 0 15px rgba(173,255,47,0.2); object-fit: cover; }
-        h2 { margin: 15px 0 5px 0; font-size: 1.6rem; color: #fff; }
-        .bio { color: #aaa; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.4; padding: 0 10px; }
-        .stats { display: flex; justify-content: center; gap: 30px; margin-bottom: 25px; font-size: 0.9rem; color: #888; }
-        .stats span strong { color: #adff2f; }
-        .btn { display: inline-block; padding: 10px 20px; border: 2px solid #adff2f; color: #adff2f; text-decoration: none; font-weight: bold; border-radius: 20px; background: transparent; transition: 0.3s; cursor: pointer; font-size: 0.9rem; font-family: inherit; }
-        .btn:hover { background: #adff2f; color: #000; box-shadow: 0 0 15px #adff2f; }
-        .box { background: #1f1f1f; padding: 20px; border-radius: 16px; margin-top: 20px; text-align: left; border: 1px solid #2a2a2a; }
-        textarea { width: 95%; height: 70px; background: #2b2b2b; border: 1px solid #333; color: #fff; padding: 10px; border-radius: 10px; resize: none; outline: none; font-family: inherit; }
-        textarea:focus { border-color: #adff2f; }
-        .q-item { background: #1a1a1a; padding: 18px; border-radius: 14px; margin-bottom: 15px; border-left: 4px solid #adff2f; border-top: 1px solid #222; border-right: 1px solid #222; border-bottom: 1px solid #222; }
-        .q-text { font-weight: bold; color: #fff; margin-bottom: 10px; font-size: 1rem; }
-        .a-text { color: #adff2f; font-size: 0.95rem; line-height: 1.4; background: rgba(173,255,47,0.04); padding: 12px; border-radius: 10px; border: 1px solid rgba(173,255,47,0.1); }
-        .a-empty { color: #555; font-size: 0.9rem; font-style: italic; padding-left: 5px; }
-        .nav-link { display: inline-block; margin-top: 25px; color: #666; text-decoration: none; font-size: 0.9rem; }
-        .nav-link:hover { color: #fff; }
+        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 20px; margin: 0; }
+        .container { max-width: 450px; margin: 0 auto; background: #1a1a24; padding: 25px; border-radius: 20px; }
+        .profile-header { text-align: center; margin-bottom: 20px; }
+        .avatar { width: 100px; height: 100px; border-radius: 50%; border: 3px solid #adff2f; object-fit: cover; }
+        input[type="text"], textarea { width: 100%; padding: 15px; border: 2px solid #2e2e3e; border-radius: 20px; background: #252535; color: white; box-sizing: border-box; outline: none; margin-bottom: 10px; }
+        button { background: #adff2f; color: #000; border: none; padding: 12px; font-weight: bold; border-radius: 20px; cursor: pointer; width: 100%; }
+        .btn-alt { background: #252535; color: #fff; border: 1px solid #444; }
+        .msg-box { background: #252535; padding: 15px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid #adff2f; }
+        a { color: #8ab4f8; text-decoration: none; display: inline-block; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <div class="profile-container">
-        <img src="/static/{{ profile_user[2] }}" class="avatar" alt="프로필">
-        
-        <h2>{{ profile_user[0] }}</h2>
-        <p class="bio">{{ profile_user[1] }}</p>
-        
-        <div class="stats">
-            <span>팔로워 <strong>{{ followers_count }}</strong></span>
-            <span>팔로잉 <strong>{{ following_count }}</strong></span>
-        </div>
-
-        <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;">
+    <div class="container">
+        <p><a href="/">🏠 홈으로</a></p>
+        <div class="profile-header">
+            <img class="avatar" src="/static/{{ profile_user[2] }}">
+            <h2>{{ profile_user[0] }}</h2>
+            <p style="color:#adff2f; font-size:0.9rem;">👥 팔로워 {{ followers_count }}명</p>
+            <p style="color:#bbb; padding: 0 10px;">"{{ profile_user[1] }}"</p>
+            
             {% if session.get('user') and session['user'] != profile_user[0] %}
-                <form action="/follow/{{ profile_user[0] }}" method="POST" style="display:inline;">
-                    <button type="submit" class="btn">{% if is_following %}팔로우 취소{% else %}팔로우{% endif %}</button>
-                </form>
-                <a href="/chat/dm/{{ profile_user[0] }}" class="btn" style="border-color: #0095f6; color: #0095f6;">갠톡 하기</a>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <form action="/follow/{{ profile_user[0] }}" method="post" style="flex:1;">
+                        <button type="submit" class="{% if is_following %}btn-alt{% endif %}">
+                            {% if is_following %}✔ 팔로잉 취소{% else %}⚡ 팔로우하기{% endif %}
+                        </button>
+                    </form>
+                    <a href="/chat/dm/{{ profile_user[0] }}" style="flex:1; background:#adff2f; color:#000; padding:12px; text-align:center; font-weight:bold; border-radius:20px; margin:0;">💬 갠톡하기</a>
+                </div>
             {% endif %}
-            <a href="/" class="nav-link" style="margin: 0; align-self: center; padding-left: 10px;">🏠 홈으로</a>
         </div>
 
         {% if session.get('user') == profile_user[0] %}
-            <div class="box">
-                <h4 style="color:#adff2f; margin-top:0; margin-bottom:12px;">내 정보 관리</h4>
-                <form action="/update_profile" method="POST" enctype="multipart/form-data">
-                    <textarea name="bio" placeholder="소개글을 입력하세요...">{{ profile_user[1] }}</textarea>
-                    <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                        <input type="file" name="profile_img" style="font-size: 0.8rem; color: #aaa;">
-                        <button type="submit" class="btn" style="font-size:0.8rem; padding:6px 14px;">설정 저장</button>
-                    </div>
+            <fieldset style="border: 1px solid #2e2e3e; border-radius: 15px; padding: 15px; margin-bottom: 25px;">
+                <legend style="color:#adff2f; padding:0 5px;">내 프로필 관리</legend>
+                <form action="/update_profile" method="post" enctype="multipart/form-data">
+                    <input type="text" name="bio" value="{{ profile_user[1] }}" placeholder="상메 편집...">
+                    <input type="file" name="profile_img" style="color:#bbb; margin-bottom:10px;">
+                    <button type="submit">저장하기</button>
                 </form>
-            </div>
+            </fieldset>
         {% endif %}
 
-        <div class="box">
-            <h4 style="color:#adff2f; margin-top:0; margin-bottom:12px;">익명 질문 남기기</h4>
-            <form action="/ask/{{ profile_user[0] }}" method="POST">
-                <textarea name="content" placeholder="무엇이든 익명으로 물어보세요!"></textarea><br>
-                <button type="submit" class="btn" style="font-size:0.8rem; padding:6px 14px; margin-top:10px;">질문 전송</button>
-            </form>
-        </div>
+        <h3 style="color:#adff2f;">Anonymous Question</h3>
+        <form action="/ask/{{ profile_user[0] }}" method="post">
+            <textarea name="content" placeholder="익명으로 속마음 질문하기..." rows="3" required></textarea>
+            <button type="submit">익명 질문 전송 🚀</button>
+        </form>
 
-        <h3 style="text-align:left; margin-top:40px; color:#adff2f; border-bottom:1px solid #222; padding-bottom:10px;">📮 도착한 질문</h3>
+        <h3 style="color:#adff2f; margin-top:30px;">Feeds</h3>
         {% for msg in messages %}
-            <div class="q-item">
-                <div class="q-text">Q. {{ msg[2] }}</div>
+            <div class="msg-box">
+                <p style="color:#aaa; font-size:0.85rem;">❓ 익명질문 ({{ msg[4] }})</p>
+                <p style="font-size:1.05rem; font-weight:bold; margin: 5px 0;">{{ msg[2] }}</p>
                 {% if msg[3] %}
-                    <div class="a-text">A. {{ msg[3]|safe }}</div>
+                    <p style="color: #adff2f; margin-top:10px; padding-left:10px; border-left: 2px solid #adff2f;">💬 답변: {{ msg[3] }}</p>
                 {% else %}
-                    <div class="a-empty">아직 답변을 기다리는 중입니다.</div>
+                    <p style="color: #666; font-size:0.9rem; italic">아직 답변 대기 중...</p>
                 {% endif %}
 
                 {% if session.get('user') == profile_user[0] %}
-                    <div style="margin-top:12px; text-align:right;">
-                        {% if not msg[3] %}
-                            <form action="/answer/{{ msg[0] }}" method="POST" style="display:inline-block; width:100%; margin-bottom:8px;">
-                                <input type="text" name="answer" placeholder="답변을 입력하세요..." style="width:75%; padding:8px; background:#222; border:1px solid #333; color:#fff; border-radius:6px; outline:none;" required>
-                                <button type="submit" class="btn" style="font-size:0.75rem; padding:6px 12px; vertical-align: middle;">답변</button>
-                            </form>
-                        {% endif %}
-                        <form action="/delete_message/{{ msg[0] }}" method="POST" style="display:inline;">
-                            <button type="submit" style="background:transparent; border:none; color:#ff4757; cursor:pointer; font-size:0.8rem;" onclick="return confirm('이 질문을 삭제하시겠습니까?');">[질문 삭제]</button>
-                        </form>
-                    </div>
+                    <form action="/answer/{{ msg[0] }}" method="post" style="margin-top:10px; display:flex; gap:5px;">
+                        <input type="text" name="answer" value="{{ msg[3] if msg[3] else '' }}" placeholder="답변 달기..." style="margin:0; padding:10px;">
+                        <button type="submit" style="width:70px; padding:0;">등록</button>
+                    </form>
+                    <form action="/delete_message/{{ msg[0] }}" method="post" style="margin-top:5px;">
+                        <button type="submit" style="background:#ff6b6b; color:#fff; padding:5px; font-size:0.8rem;">삭제</button>
+                    </form>
                 {% endif %}
             </div>
-        {% else %}
-            <p style="color:#555; text-align:left; font-style:italic; padding-left: 5px;">아직 등록된 질문이 없습니다.</p>
         {% endfor %}
     </div>
 </body>
