@@ -470,7 +470,58 @@ def follow(username):
     cur.close()
     conn.close()
     return redirect(url_for('user_profile', username=username))
+# 🚪 단톡방 나가기 기능
+@app.route('/group/leave/<int:room_id>', methods=['POST'])
+def leave_group(room_id):
+    user = session.get('user')
+    if not user:
+        return redirect(url_for('login'))
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # 1. 내가 진짜 이 방 멤버인지 먼저 확인
+        cur.execute("SELECT 1 FROM room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
+        is_member = cur.fetchone()
+        
+        # 방장이 만든 사람인 경우도 고려하여 chat_rooms에서도 확인
+        cur.execute("SELECT created_by, room_name FROM chat_rooms WHERE id = %s", (room_id,))
+        room_info = cur.fetchone()
+        
+        if not is_member and (room_info and room_info['created_by'] != user):
+            cur.close()
+            conn.close()
+            return "이 방의 멤버가 아닙니다.", 400
+            
+        # 2. 퇴장 안내 메시지 먼저 남기기 (센스!)
+        # 데이터베이스 u.nickname을 가져오기 위해 유저 정보 조회
+        cur.execute("SELECT nickname FROM users WHERE username = %s", (user,))
+        my_info = cur.fetchone()
+        nickname = my_info['nickname'] if my_info else user
+        
+        system_msg = f"📢 {nickname}(@{user})님이 퇴장하셨습니다."
+        cur.execute("INSERT INTO room_messages (room_id, sender, message) VALUES (%s, %s, %s)", (room_id, user, system_msg))
+        
+        # 3. room_members 테이블에서 나를 삭제
+        cur.execute("DELETE FROM room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
+        
+        # 4. (선택 조건) 만약 방장이 나간 거라면 다음 사람에게 방장을 넘기거나 방을 유지하도록, 
+        # 여기서는 created_by를 null이나 시스템 계정으로 바꾸거나 그대로 둡니다. (멤버에서만 빠지므로 방은 유지됨)
+        if room_info and room_info['created_by'] == user:
+            # 방장 권한을 빈값 처리해서 목록에 안 뜨게 하거나 유지
+            cur.execute("UPDATE chat_rooms SET created_by = NULL WHERE id = %s", (room_id,))
 
+        conn.commit()
+        cur.close()
+        conn.close()
+        return redirect(url_for('index')) # 나가면 메인 화면으로 이동!
+        
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return f"방을 나가는 중 오류가 발생했습니다: {str(e)}", 500
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
