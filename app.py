@@ -12,7 +12,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "your_neon_db_connection_string_he
 
 def get_db_connection():
     # 최신 psycopg 버전 문법에 맞추어 dict_row 형태로 연결합니다.
-  return psycopg.connect(DATABASE_URL, row_factory=dict_row, context=psycopg.compat.adapters)
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def init_db():
     conn = get_db_connection()
@@ -205,8 +205,9 @@ def user_profile(username):
         cur.execute("UPDATE ask_messages SET is_read = TRUE WHERE target_user = %s", (username,))
         conn.commit()
 
-    cur.execute("SELECT COUNT(*) FROM follows WHERE following = %s", (username,))
-    followers_count = cur.fetchone()[0]
+    # dict_row 환경 오류 방지를 위해 AS cnt 부여 및 딕셔너리 키로 접근하도록 수정
+    cur.execute("SELECT COUNT(*) AS cnt FROM follows WHERE following = %s", (username,))
+    followers_count = cur.fetchone()['cnt']
     
     is_following = False
     if session.get('user'):
@@ -290,7 +291,7 @@ def delete_message(msg_id):
 def follow(username):
     user = session.get('user')
     if not user: return redirect(url_for('login'))
-    
+        
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM follows WHERE follower = %s AND following = %s", (user, username))
@@ -307,14 +308,15 @@ def follow(username):
 def create_group():
     user = session.get('user')
     if not user: return redirect(url_for('login'))
-    
+        
     if request.method == 'POST':
         room_name = request.form.get('room_name').strip()
         if room_name:
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
-            room_id = cur.fetchone()[0]
+            # dict_row 환경에 맞게 딕셔너리 키['id']로 가져오도록 수정
+            room_id = cur.fetchone()['id']
             conn.commit()
             cur.close()
             conn.close()
@@ -325,22 +327,22 @@ def create_group():
 def group_chat(room_id):
     user = session.get('user')
     if not user: return redirect(url_for('login'))
-    
+        
     conn = get_db_connection()
     cur = conn.cursor()
-    
+        
     if request.method == 'POST':
         message = request.form.get('message').strip()
         if message:
             cur.execute("INSERT INTO room_messages (room_id, sender, message) VALUES (%s, %s, %s)", (room_id, user, message))
             conn.commit()
-            
+                
     cur.execute("SELECT room_name FROM chat_rooms WHERE id = %s", (room_id,))
     room = cur.fetchone()
-    
+        
     cur.execute("SELECT sender, message, created_at FROM room_messages WHERE room_id = %s ORDER BY id ASC", (room_id,))
     messages = cur.fetchall()
-    
+        
     cur.close()
     conn.close()
     return render_template('chat.html', room=room, room_id=room_id, messages=messages)
