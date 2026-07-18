@@ -183,9 +183,15 @@
             {% for msg in messages %}
                 {% if msg.sender == session['user'] %}
                     <!-- 내가 전송한 대화 내역 -->
+                    <!-- 내가 전송한 대화 내역 (숫자 1 추가 버전) -->
                     <div class="msg-wrapper me">
                         <div class="msg-bubble">{{ msg.message }}</div>
-                        <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
+                        <div class="msg-time" style="display: flex; align-items: center; gap: 5px; justify-content: flex-end; width: 100%;">
+                            {% if not msg.is_read %}
+                                <span style="color: #fbbf24; font-weight: bold; font-size: 0.8rem; margin-right: 2px;">1</span>
+                            {% endif %}
+                            <span>{{ msg.created_at.strftime('%H:%M') }}</span>
+                        </div>
                     </div>
                 {% else %}
                     <!-- 상대가 전송한 대화 내역 -->
