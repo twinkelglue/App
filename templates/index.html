@@ -222,15 +222,23 @@
     <div class="list-container">
         {% if all_users %}
             {% for u in all_users %}
-            <div class="item-card">
-                <div class="item-info">
-                    <div class="title">{{ u.nickname }}</div>
-                    <div class="subtitle">@{{ u.username }}</div>
-                </div>
-                <!-- app.py의 dm_chat 라우터와 매핑 -->
-                <a href="{{ url_for('dm_chat', username=u.username) }}" class="btn-action">디엠 보내기</a>
-            </div>
-            {% endfor %}
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 6px 0;">
+        <div>
+            <strong style="color: #ffffff;">{{ u.nickname }}</strong> 
+            <span style="color: #94a3b8; font-size: 0.85rem; margin-right: 6px;">@{{ u.username }}</span>
+            
+            <!-- 🟢 여기부터 온라인/오프라인 불빛 코드가 추가됩니다 -->
+            {% if u.is_online %}
+                <span style="color: #22c55e; font-size: 0.8rem; background: rgba(34, 197, 94, 0.15); padding: 2px 6px; border-radius: 10px; font-weight: bold;">🟢 온라인</span>
+            {% else %}
+                <span style="color: #64748b; font-size: 0.8rem; background: rgba(100, 116, 139, 0.15); padding: 2px 6px; border-radius: 10px;">⚫ 오프라인</span>
+            {% endif %}
+            <!-- 🟢 여기까지 -->
+        </div>
+        
+        <a href="{{ url_for('dm_chat', username=u.username) }}" style="text-decoration: none; background: linear-gradient(135deg, #00c6ff, #0072ff); color: white; padding: 6px 12px; border-radius: 16px; font-size: 0.85rem; font-weight: bold;">갠톡</a>
+    </div>
+{% endfor %}
         {% else %}
             <div class="empty-msg">대화 가능한 다른 멤버가 아직 없습니다.</div>
         {% endif %}
