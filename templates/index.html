@@ -5,17 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatClub</title>
     <style>
-        body { background-color: #121212; color: #ffffff; font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; margin: 0; }
-        .container { max-width: 450px; margin: 40px auto; background: #1e1e1e; padding: 30px; border-radius: 12px; border: 1px solid #363636; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        h1 { font-size: 2.2rem; font-weight: 800; color: #ffffff; text-align: center; margin-bottom: 25px; letter-spacing: -1px; }
-        input[type="text"] { width: 100%; padding: 14px; border: 1px solid #363636; border-radius: 8px; background: #262626; color: white; font-size: 0.95rem; box-sizing: border-box; outline: none; transition: 0.2s; }
-        input[type="text"]:focus { border-color: #0095f6; }
-        button { background: #0095f6; color: #ffffff; border: none; padding: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; font-size: 0.95rem; width: 100%; margin-top: 10px; }
-        button:hover { background: #1877f2; }
-        .btn-link { display: inline-block; background: #262626; color: #ffffff; padding: 12px; border-radius: 8px; width: 100%; text-align: center; box-sizing: border-box; margin-top: 8px; font-weight: 600; border: 1px solid #363636; text-decoration: none; font-size: 0.9rem; }
-        .btn-link-primary { display: inline-block; background: #0095f6; color: #ffffff; padding: 12px; border-radius: 8px; width: 100%; text-align: center; box-sizing: border-box; margin-top: 8px; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
-        .room-item { background: #262626; padding: 15px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #363636; }
-        a { color: #0095f6; text-decoration: none; font-size: 0.9rem; }
+      body { background-color: #fafafa !important; color: #262626 !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .container { max-width: 450px; margin: 40px auto; background: #ffffff !important; padding: 30px; border: 1px solid #dbdbdb; border-radius: 12px; }
+        h1 { font-size: 2.2rem; font-weight: 800; color: #262626 !important; text-align: center; margin-bottom: 20px; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid #dbdbdb !important; background-color: #fafafa !important; color: #262626 !important; border-radius: 8px; box-sizing: border-box; }
+        input[type="text"]:focus, input[type="password"]:focus { border-color: #a8a8a8 !important; }
+        button, .btn-link-primary { width: 100%; background: #0095f6 !important; color: #ffffff !important; border: none; padding: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; display: inline-block; text-align: center; box-sizing: border-box; }
+        button:hover, .btn-link-primary:hover { background: #1877f2 !important; }
+        .btn-link { display: inline-block; width: 100%; background: #ffffff; color: #0095f6 !important; border: 1px solid #dbdbdb; padding: 12px; font-weight: 600; border-radius: 8px; text-align: center; box-sizing: border-box; }
+        .btn-link:hover { background: #fafafa; }
+        .room-item { background: #fafafa !important; border: 1px solid #dbdbdb; padding: 15px; border-radius: 8px; margin-bottom: 10px; color: #262626 !important; }
+        a { color: #00376b !important; text-decoration: none; font-size: 0.9rem; font-weight: 600; }
+        a:hover { color: #0095f6 !important; }
     </style>
 </head>
 <body>
