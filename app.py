@@ -205,7 +205,6 @@ def dm_chat(username):
     
     conn = get_db_connection()
     cur = conn.cursor()
-    
     # 대화 상대방 정보 가져오기
     cur.execute("SELECT username, nickname FROM users WHERE username = %s AND is_active = TRUE", (username,))
     receiver = cur.fetchone()
@@ -237,10 +236,10 @@ def dm_chat(username):
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
   user = session.get('user')
-    if not user: return redirect(url_for('login'))
+  if not user: return redirect(url_for('login'))
         
-    if request.method == 'POST':
-        room_name = request.form.get('room_name', '').strip()
+  if request.method == 'POST':
+      room_name = request.form.get('room_name', '').strip()
         if not room_name:
             return "방 이름을 입력해주세요.", 400
             
