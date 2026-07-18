@@ -3,82 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatClub - {{ room.room_name }}</title>
+    <title>{{ room.room_name }} - ChatClub</title>
     <style>
-      body { background-color: #fafafa !important; color: #262626 !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .container { max-width: 450px; margin: 20px auto; background: #ffffff !important; border: 1px solid #dbdbdb; border-radius: 12px; display: flex; flex-direction: column; height: 85vh; overflow: hidden; box-shadow: none; }
-        .chat-header { padding: 15px; border-bottom: 1px solid #dbdbdb; font-weight: bold; display: flex; justify-content: space-between; align-items: center; background: #ffffff !important; color: #262626 !important; }
-        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; background: #ffffff !important; }
-        .msg-bubble { max-width: 75%; padding: 10px 14px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; margin-bottom: 8px; }
-        .msg-me { background: #0095f6 !important; color: white !important; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .msg-other { background: #efefef !important; color: #262626 !important; align-self: flex-start; border-bottom-left-radius: 4px; }
-        .sender-name { font-size: 0.75rem; color: #737373 !important; margin-bottom: 3px; display: block; }
-        .chat-footer { padding: 12px; border-top: 1px solid #dbdbdb; background: #ffffff !important; }
-        .input-form { display: flex; gap: 8px; }
-        .input-form input { flex: 1; padding: 10px 16px; border: 1px solid #dbdbdb !important; background-color: #ffffff !important; color: #262626 !important; border-radius: 22px; font-size: 0.95rem; }
-        .input-form input:focus { border-color: #a8a8a8 !important; outline: none; }
-        .input-form button { background: none !important; color: #0095f6 !important; border: none; padding: 0 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; }
-        .input-form button:hover { color: #1877f2 !important; }
-        .read-status { font-size: 0.7rem; color: #737373 !important; margin-top: 2px; text-align: right; }
+        :root {
+            --bg-color: #05070a;
+            --card-bg: #121620;
+            --text-color: #ffffff;
+            --text-muted: #94a3b8;
+            --gradient-instagram: linear-gradient(135deg, #00c6ff, #0072ff, #00f260);
+            --border-color: #1e293b;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0; padding: 0; display: flex; justify-content: center;
+        }
+
+        .chat-container {
+            width: 100%; max-width: 500px; height: 100vh;
+            display: flex; flex-direction: column;
+            background-color: var(--bg-color);
+            border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color);
+            box-sizing: border-box;
+        }
+
+        .chat-header {
+            display: flex; align-items: center; padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: rgba(5, 7, 10, 0.9); backdrop-filter: blur(12px);
+        }
+
+        .chat-header .btn-back {
+            color: var(--text-color); text-decoration: none; font-size: 1.3rem; margin-right: 15px; font-weight: bold;
+        }
+
+        .chat-header .room-info { flex-grow: 1; }
+        .chat-header .room-info .name { font-weight: 700; font-size: 1.1rem; color: #ffffff; }
+
+        .chat-messages {
+            flex-grow: 1; padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 14px;
+        }
+
+        .msg-wrapper { display: flex; flex-direction: column; max-width: 75%; }
+        .msg-wrapper.me { align-self: flex-end; align-items: flex-end; }
+        .msg-wrapper.other { align-self: flex-start; align-items: flex-start; }
+
+        .msg-sender { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; padding: 0 4px; }
+        .msg-bubble { padding: 12px 16px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; word-break: break-all; }
+
+        .me .msg-bubble {
+            background: var(--gradient-instagram); color: #ffffff; font-weight: 600;
+            border-bottom-right-radius: 4px; box-shadow: 0 3px 10px rgba(0, 198, 255, 0.15);
+        }
+
+        .other .msg-bubble {
+            background-color: var(--card-bg); color: #ffffff;
+            border: 1px solid var(--border-color); border-bottom-left-radius: 4px;
+        }
+
+        .msg-time { font-size: 0.75rem; color: var(--text-muted); margin-top: 5px; padding: 0 4px; }
+
+        .chat-input-form {
+            padding: 15px 20px; border-top: 1px solid var(--border-color);
+            background-color: var(--bg-color); display: flex; gap: 10px;
+        }
+
+        .chat-input-form input {
+            flex-grow: 1; background-color: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 24px; padding: 12px 20px; color: #ffffff; font-size: 0.95rem; outline: none;
+        }
+
+        .chat-input-form button {
+            background: var(--gradient-instagram); color: #ffffff; border: none; font-weight: 700;
+            padding: 0 22px; border-radius: 24px; cursor: pointer; font-size: 0.95rem;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="chat-header">
-            <span>💬 {{ room.room_name }}</span>
-            <a href="/" style="color:#a8a8a8; text-decoration:none; font-size:0.85rem;">나가기</a>
-        </div>
-        
-        <div class="chat-messages" id="msgArea">
-            {% for msg in messages %}
-                {% if msg.sender == session.get('user') %}
-                    <div class="msg-bubble msg-me">
-                        <span class="sender-name" style="color:#e0e0e0; text-align:right;">나</span>
-                        {{ msg.message }}
-                        <div class="read-status" style="color:#f0f0f0;">읽음</div>
-                    </div>
-                {% else %}
-                    <div class="msg-bubble msg-other">
-                        <span class="sender-name">@{{ msg.sender }}</span>
-                        {{ msg.message }}
-                        <div class="read-status">읽음</div>
-                    </div>
-                {% endif %}
-            {% endfor %}
-        </div>
-        
-        <div class="chat-footer">
-            <form class="input-form" method="post" id="chatForm">
-                <input type="text" name="message" id="msgInput" placeholder="메시지를 입력하세요..." autocomplete="off" required>
-                <button type="submit">전송</button>
-            </form>
+
+<div class="chat-container">
+    <div class="chat-header">
+        <a href="{{ url_for('index') }}" class="btn-back">❮</a>
+        <div class="room-info">
+            <div class="name">{{ room.room_name }}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">오픈 단톡방 개설방</div>
         </div>
     </div>
 
-    <script>
-        // 대화창 하단 자동 스크롤 고정
-        const msgArea = document.getElementById('msgArea');
-        msgArea.scrollTop = msgArea.scrollHeight;
+    <div class="chat-messages" id="chatMessages">
+        {% if messages %}
+            {% for msg in messages %}
+                {% if msg.sender == session['user'] %}
+                    <div class="msg-wrapper me">
+                        <div class="msg-bubble">{{ msg.message }}</div>
+                        <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
+                    </div>
+                {% else %}
+                    <div class="msg-wrapper other">
+                        <!-- 단톡방이므로 보낸 사람의 닉네임 유저 표시 추가 -->
+                        <div class="msg-sender">@{{ msg.sender }}</div>
+                        <div class="msg-bubble">{{ msg.message }}</div>
+                        <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-top: 50px;">
+                🎉 단톡방이 개설되었습니다. 자유롭게 대화를 시작해보세요!
+            </div>
+        {% endif %}
+    </div>
 
-        // 6번 조건: 상대가 켜두었을 때 실시간으로 대화가 이어지도록 5초 단위 풀링 갱신 기법 적용
-        setInterval(() => {
-            fetch(window.location.href)
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const newMessages = doc.getElementById('msgArea').innerHTML;
-                    
-                    // 현재 스크롤이 하단에 있는지 판별
-                    const isAtBottom = msgArea.scrollHeight - msgArea.clientHeight <= msgArea.scrollTop + 50;
-                    
-                    msgArea.innerHTML = newMessages;
-                    
-                    if (isAtBottom) {
-                        msgArea.scrollTop = msgArea.scrollHeight;
-                    }
-                });
-        }, 5000); // 5초 간격으로 자동 새로고침 없이 동기화
-    </script>
+    <form class="chat-input-form" method="POST">
+        <input type="text" name="message" placeholder="메시지를 입력하세요..." required autocomplete="off">
+        <button type="submit">전송</button>
+    </form>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chatMessages');
+    chatBox.scrollTop = chatBox.scrollHeight;
+</script>
+
 </body>
 </html>
