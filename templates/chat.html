@@ -3,43 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Room</title>
+    <title>ChatClub - {{ room.room_name }}</title>
     <style>
-        body { background-color: #0f0f12; color: #ffffff; font-family: 'Pretendard', sans-serif; padding: 15px; margin: 0; }
-        .chat-container { max-width: 450px; margin: 0 auto; background: #1a1a24; height: 100vh; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; }
-        .chat-header { background: #252535; padding: 15px; text-align: center; border-bottom: 1px solid #2e2e3e; font-weight: bold; color: #adff2f; }
-        .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #13131c; }
-        .bubble { margin-bottom: 12px; max-width: 75%; padding: 12px; border-radius: 15px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
-        .bubble.me { background: #adff2f; color: #000; margin-left: auto; border-top-right-radius: 2px; }
-        .bubble.other { background: #252535; color: #fff; margin-right: auto; border-top-left-radius: 2px; }
-        .chat-footer { padding: 10px; background: #1a1a24; display: flex; gap: 8px; border-top: 1px solid #2e2e3e; }
-        input[type="text"] { flex: 1; padding: 12px; border-radius: 25px; border: 2px solid #2e2e3e; background: #252535; color: white; outline: none; }
-        button { background: #adff2f; color: #000; border: none; padding: 0 20px; font-weight: bold; border-radius: 25px; cursor: pointer; }
+        body { background-color: #121212; color: #ffffff; font-family: '-apple-system', sans-serif; padding: 20px; }
+        .container { max-width: 450px; margin: 20px auto; background: #1e1e1e; border-radius: 12px; border: 1px solid #363636; display: flex; flex-direction: column; height: 85vh; }
+        .chat-header { padding: 15px; border-bottom: 1px solid #363636; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .msg-bubble { max-width: 75%; padding: 10px 14px; border-radius: 16px; font-size: 0.95rem; line-height: 1.4; position: relative; }
+        .msg-me { background: #0095f6; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .msg-other { background: #262626; color: white; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #363636; }
+        .sender-name { font-size: 0.75rem; color: #a8a8a8; margin-bottom: 3px; display: block; }
+        .chat-footer { padding: 12px; border-top: 1px solid #363636; background: #1e1e1e; }
+        .input-form { display: flex; gap: 8px; }
+        .input-form input { flex: 1; padding: 12px; border: 1px solid #363636; border-radius: 20px; background: #262626; color: white; outline: none; }
+        .input-form button { background: #0095f6; color: white; border: none; padding: 0 16px; font-weight: bold; border-radius: 20px; cursor: pointer; }
+        .read-status { font-size: 0.7rem; color: #a8a8a8; margin-top: 2px; text-align: right; }
     </style>
 </head>
 <body>
-    <div class="chat-container">
+    <div class="container">
         <div class="chat-header">
-            {{ target_name }}
-            <a href="/" style="color:#aaa; text-decoration:none; font-size:0.8rem; float:left;">◀ 나가기</a>
-            <a href="#" onclick="location.reload();" style="color:#adff2f; text-decoration:none; font-size:0.8rem; float:right;">🔄 갱신</a>
+            <span>💬 {{ room.room_name }}</span>
+            <a href="/" style="color:#a8a8a8; text-decoration:none; font-size:0.85rem;">나가기</a>
         </div>
         
-        <div class="chat-box">
-            {% for chat in chat_history %}
-                <div style="font-size:0.75rem; color:#888; text-align: {% if chat[0] == session['user'] %}right{% else %}left{% endif %}; margin-bottom:2px;">
-                    {{ chat[0] }}
-                </div>
-                <div class="bubble {% if chat[0] == session['user'] %}me{% else %}other{% endif %}">
-                    {{ chat[1] }}
-                </div>
+        <div class="chat-messages" id="msgArea">
+            {% for msg in messages %}
+                {% if msg.sender == session.get('user') %}
+                    <div class="msg-bubble msg-me">
+                        <span class="sender-name" style="color:#e0e0e0; text-align:right;">나</span>
+                        {{ msg.message }}
+                        <div class="read-status" style="color:#f0f0f0;">읽음</div>
+                    </div>
+                {% else %}
+                    <div class="msg-bubble msg-other">
+                        <span class="sender-name">@{{ msg.sender }}</span>
+                        {{ msg.message }}
+                        <div class="read-status">읽음</div>
+                    </div>
+                {% endif %}
             {% endfor %}
         </div>
         
-        <form class="chat-footer" method="post">
-            <input type="text" name="message" placeholder="메시지 입력 창..." required autocomplete="off" autofocus>
-            <button type="submit">전송</button>
-        </form>
+        <div class="chat-footer">
+            <form class="input-form" method="post" id="chatForm">
+                <input type="text" name="message" id="msgInput" placeholder="메시지를 입력하세요..." autocomplete="off" required>
+                <button type="submit">전송</button>
+            </form>
+        </div>
     </div>
+
+    <script>
+        // 대화창 하단 자동 스크롤 고정
+        const msgArea = document.getElementById('msgArea');
+        msgArea.scrollTop = msgArea.scrollHeight;
+
+        // 6번 조건: 상대가 켜두었을 때 실시간으로 대화가 이어지도록 5초 단위 풀링 갱신 기법 적용
+        setInterval(() => {
+            fetch(window.location.href)
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newMessages = doc.getElementById('msgArea').innerHTML;
+                    
+                    // 현재 스크롤이 하단에 있는지 판별
+                    const isAtBottom = msgArea.scrollHeight - msgArea.clientHeight <= msgArea.scrollTop + 50;
+                    
+                    msgArea.innerHTML = newMessages;
+                    
+                    if (isAtBottom) {
+                        msgArea.scrollTop = msgArea.scrollHeight;
+                    }
+                });
+        }, 5000); // 5초 간격으로 자동 새로고침 없이 동기화
+    </script>
 </body>
 </html>
