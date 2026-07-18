@@ -311,7 +311,7 @@ def create_group():
         
     return render_template('create_group.html', user_list=user_list)
 
-# 🏛️ 단톡방 채팅 내부 기능
+# ✨ 새로 교체할 단톡방 내부 코드
 @app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
 def group_chat(room_id):
     user = session.get('user')
@@ -319,6 +319,19 @@ def group_chat(room_id):
         
     conn = get_db_connection()
     cur = conn.cursor()
+    
+    # 🕵️‍♂️ [보안 추가] 이 유저가 방장이거나, 초대된 멤버인지 확인
+    cur.execute("""
+        SELECT 1 FROM chat_rooms cr
+        LEFT JOIN room_members rm ON cr.id = rm.room_id
+        WHERE cr.id = %s AND (cr.created_by = %s OR rm.user_id = %s)
+    """, (room_id, user, user))
+    
+    is_member = cur.fetchone()
+    if not is_member:
+        cur.close()
+        conn.close()
+        return "❌ 이 단톡방에 초대받지 않았습니다. 입장 권한이 없습니다!", 403
         
     if request.method == 'POST':
         message = request.form.get('message', '').strip()
