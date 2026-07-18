@@ -3,28 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatClub - 로그인</title>
+    <title>로그인 - ChatClub</title>
     <style>
-    body { background-color: #fafafa !important; color: #262626 !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .container { max-width: 350px; margin: 60px auto; background: #ffffff !important; padding: 40px; border: 1px solid #dbdbdb; border-radius: 4px; box-sizing: border-box; text-align: center; }
-        h2 { font-size: 1.8rem; margin-bottom: 25px; font-weight: 700; color: #262626 !important; }
-        input { width: 100%; padding: 12px; border: 1px solid #dbdbdb !important; border-radius: 4px; background-color: #fafafa !important; color: #262626 !important; margin-bottom: 8px; box-sizing: border-box; font-size: 0.85rem; }
-        input:focus { border-color: #a8a8a8 !important; outline: none; }
-        button { width: 100%; background: #0095f6 !important; color: white !important; border: none; padding: 10px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 8px; font-size: 0.9rem; }
-        button:hover { background: #1877f2 !important; }
-        a { color: #00376b !important; text-decoration: none; font-size: 0.85rem; display: inline-block; margin-top: 20px; font-weight: 600; }
-        a:hover { color: #0095f6 !important; }
+        :root {
+            --bg-color: #05070a;
+            --card-bg: #121620;
+            --text-color: #ffffff;
+            --text-muted: #94a3b8;
+            --gradient-instagram: linear-gradient(45deg, #00c6ff, #0072ff, #00f260);
+            --border-color: #1e293b;
+        }
+        body { background-color: var(--bg-color); color: var(--text-color); font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .login-box { width: 100%; max-width: 400px; padding: 30px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; box-sizing: border-box; text-align: center; }
+        h2 { margin-bottom: 25px; background: linear-gradient(45deg, #00f260, #00c6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 1.8rem; }
+        .input-group { margin-bottom: 16px; text-align: left; }
+        .input-group label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-muted); }
+        .input-group input { width: 100%; padding: 12px; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; box-sizing: border-box; outline: none; }
+        .btn-submit { width: 100%; background: var(--gradient-instagram); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+        .footer-links { margin-top: 20px; font-size: 0.9rem; color: var(--text-muted); }
+        .footer-links a { color: #00f260; text-decoration: none; font-weight: 600; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>ChatClub 로그인</h2>
-        <form method="post">
-            <input type="text" name="username" placeholder="아이디" required>
-            <input type="password" name="password" placeholder="비밀번호" required>
-            <button type="submit">로그인</button>
-        </form>
-        <a href="/">🏠 홈으로 이동</a>
+<div class="login-box">
+    <h2>ChatClub 로그인</h2>
+    <form action="{{ url_for('login') }}" method="POST">
+        <div class="input-group">
+            <label>아이디</label>
+            <input type="text" name="username" required autocomplete="off">
+        </div>
+        <div class="input-group">
+            <label>비밀번호</label>
+            <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn-submit">로그인</button>
+    </form>
+    <div class="footer-links">
+        계정이 없으신가요? <a href="{{ url_for('register') }}">회원가입</a>
     </div>
+</div>
 </body>
 </html>
