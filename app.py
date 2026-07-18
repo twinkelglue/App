@@ -236,20 +236,35 @@ def dm_chat(username):
 # 👥 단톡방 생성 기능
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
-    user = session.get('user')
+  user = session.get('user')
     if not user: return redirect(url_for('login'))
         
     if request.method == 'POST':
         room_name = request.form.get('room_name', '').strip()
-        if room_name:
-            conn = get_db_connection()
-            cur = conn.cursor()
+        if not room_name:
+            return "방 이름을 입력해주세요.", 400
+            
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
-            room_id = cur.fetchone()['id']
+            row = cur.fetchone()
+            
+            if isinstance(row, dict):
+                room_id = row.get('id')
+            else:
+                room_id = row[0]
+                
             conn.commit()
             cur.close()
             conn.close()
             return redirect(url_for('group_chat', room_id=room_id))
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return f"단톡방 생성 중 오류가 발생했습니다: {str(e)}", 500
+            
     return render_template('create_group.html')
 
 # 🏛️ 단톡방 채팅 내부 기능
