@@ -3,100 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatClub - 검색 결과</title>
+    <title>검색 결과 - ChatClub</title>
     <style>
-     <style>
-        body { 
-            background-color: #fafafa; 
-            color: #262626; 
-            font-family: 'Pretendard', -apple-system, sans-serif; 
-            padding: 20px; 
-            margin: 0; 
+        :root {
+            --bg-color: #05070a;
+            --card-bg: #121620;
+            --text-color: #ffffff;
+            --text-muted: #94a3b8;
+            --gradient-instagram: linear-gradient(45deg, #00c6ff, #0072ff, #00f260);
+            --border-color: #1e293b;
         }
-        .container { 
-            max-width: 420px; 
-            margin: 30px auto; 
-            background: #ffffff; 
-            padding: 24px; 
-            border-radius: 12px; 
-            border: 1px solid #dbdbdb; 
-            box-sizing: border-box;
-        }
-        h2 { 
-            font-size: 1.3rem; 
-            margin-bottom: 20px; 
-            font-weight: 700; 
-            color: #262626;
-            letter-spacing: -0.5px;
-        }
-        .btn-home { 
-            display: inline-block; 
-            margin-bottom: 20px; 
-            color: #737373; 
-            font-size: 0.9rem;
-            text-decoration: none; 
-            font-weight: 600;
-        }
-        .btn-home:hover {
-            color: #0095f6;
-        }
-        /* 유저 검색 목록 카드 */
-        .user-item { 
-            background: #ffffff; 
-            padding: 14px 16px; 
-            border-radius: 12px; 
-            margin-bottom: 10px; 
-            border: 1px solid #dbdbdb;
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center;
-        }
-        .username { 
-            font-weight: 700; 
-            color: #262626; 
-            font-size: 0.95rem;
-        }
-        .nickname { 
-            color: #737373; 
-            font-size: 0.85rem; 
-            margin-left: 6px; 
-        }
-        /* 프로필 방문 버튼 */
-        .btn-visit { 
-            color: #ffffff; 
-            background-color: #0095f6;
-            font-weight: 600; 
-            text-decoration: none; 
-            font-size: 0.85rem; 
-            padding: 6px 14px;
-            border-radius: 8px;
-            transition: background 0.15s ease;
-        }
-        .btn-visit:hover {
-            background-color: #1877f2;
-        }
-    </style>
+        body { background-color: var(--bg-color); color: var(--text-color); font-family: -apple-system, sans-serif; margin: 0; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 500px; min-height: 100vh; background-color: var(--bg-color); border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color); box-sizing: border-box; padding: 20px; }
+        .nav-header { display: flex; align-items: center; margin-bottom: 20px; }
+        .nav-header .btn-back { color: var(--text-color); text-decoration: none; font-size: 1.2rem; margin-right: 15px; font-weight: bold; }
+        h2 { font-size: 1.3rem; margin-bottom: 20px; color: #ffffff; }
+        .search-form { display: flex; gap: 10px; margin-bottom: 25px; }
+        .search-form input { flex-grow: 1; padding: 12px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; outline: none; }
+        .search-form button { background: var(--gradient-instagram); color: #fff; border: none; padding: 0 20px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+        .result-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .result-info .nickname { font-weight: 600; color: #fff; font-size: 1.05rem; }
+        .result-info .username { color: var(--text-muted); font-size: 0.85rem; }
+        .btn-view { background-color: #1e293b; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>🔍 '{{ query }}' 검색결과</h2>
-        <a href="/" class="btn-home">🏠 메인 홈화면으로</a>
-        <hr style="border:0; border-top:1px solid #363636; margin-bottom:20px;">
-        
-        {% if results %}
-            {% for user in results %}
-                <div class="user-item">
-                    <div>
-                        <span class="username">@{{ user.username }}</span>
-                        <span class="nickname">({{ user.nickname }})</span>
-                    </div>
-                    <a href="/user/{{ user.username }}" class="btn-visit">프로필 방문</a>
-                </div>
-            {% endfor %}
-        {% else %}
-            <p style="color:#737373; text-align:center; font-size:0.9rem; padding:20px 0;">검색 결과 일치하는 유저가 없습니다.</p>
-        {% endif %}
+<div class="container">
+    <div class="nav-header">
+        <a href="{{ url_for('index') }}" class="btn-back">❮ 홈으로</a>
     </div>
+    <h2>유저 검색하기</h2>
+    <form action="{{ url_for('search') }}" method="GET" class="search-form">
+        <input type="text" name="query" value="{{ query }}" placeholder="아이디로 검색..." required autocomplete="off">
+        <button type="submit">검색</button>
+    </form>
+
+    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">
+        '{{ query }}' 검색 결과
+    </div>
+
+    {% if results %}
+        {% for r in results %}
+        <div class="result-card">
+            <div class="result-info">
+                <div class="nickname">{{ r.nickname }}</div>
+                <div class="username">@{{ r.username }}</div>
+            </div>
+            <a href="{{ url_for('user_profile', username=r.username) }}" class="btn-view">프로필 방문</a>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div style="text-align: center; color: var(--text-muted); padding: 30px;">일치하는 유저가 없습니다.</div>
+    {% endif %}
+</div>
 </body>
 </html>
