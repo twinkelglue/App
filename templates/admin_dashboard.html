@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>👑 최고 관리자 대시보드</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f9; }
+        h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        h2 { margin-top: 40px; color: #555; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #2c3e50; color: white; }
+        tr:hover { background-color: #f9f9f9; }
+        .btn-danger { background-color: #ff4d4d; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; }
+        .btn-danger:hover { background-color: #cc0000; }
+        .status-active { color: green; font-weight: bold; }
+        .status-banned { color: red; font-weight: bold; }
+        .nav-link { margin-bottom: 20px; display: inline-block; text-decoration: none; color: #3498db; }
+    </style>
+</head>
+<body>
+
+    <h1>👑 최고 관리자 제어 대시보드 (마스터 모드)</h1>
+    <a href="/" class="nav-link">← 메인 홈페이지로 돌아가기</a>
+
+    <!-- 1. 전체 유저 관리 섹션 -->
+    <h2>👤 서비스 가입 유저 관리 (영구 차단)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>아이디(ID)</th>
+                <th>닉네임</th>
+                <th>상태 메시지</th>
+                <th>상태</th>
+                <th>제어 조치</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in all_users %}
+            <tr>
+                <td><strong>@{{ u.username }}</strong></td>
+                <td>{{ u.nickname }}</td>
+                <td>{{ u.bio }}</td>
+                <td>
+                    {% if u.is_active %}
+                        <span class="status-active">정상 활동중</span>
+                    {% else %}
+                        <span class="status-banned">차단됨(탈퇴)</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if u.is_active %}
+                    <form action="/admin/ban_user/{{ u.username }}" method="POST" onsubmit="return confirm('이 유저를 정말 서비스에서 영구 추방하시겠습니까? 로그인과 모든 활동이 차단됩니다.');">
+                        <button type="submit" class="btn-danger">🚫 즉시 차단</button>
+                    </form>
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 2. 모든 오픈채팅방 관리 섹션 -->
+    <h2>💬 전체 오픈채팅방 리스트 (잘못 만든 방 폭파)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>방 ID</th>
+                <th>오픈챗방 이름</th>
+                <th>개설자(방장)</th>
+                <th>관리 조치</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in open_rooms %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td><a href="/open_chat/room/{{ r.id }}" target="_blank"><strong>{{ r.title }}</strong> (구경하기 ↗)</a></td>
+                <td>@{{ r.created_by }}</td>
+                <td>
+                    <form action="/open_chat/room/{{ r.id }}/delete" method="POST" onsubmit="return confirm('이 오픈채팅방을 강제 폭파하시겠습니까? 내부 메시지가 영구 삭제됩니다.');">
+                        <button type="submit" class="btn-danger">💥 방 강제 삭제</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 3. 모든 일반 단톡방 관리 섹션 -->
+    <h2>👥 전체 일반 비밀 단톡방 리스트</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>방 ID</th>
+                <th>단톡방 이름</th>
+                <th>생성자</th>
+                <th>관리 조치</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for g in group_rooms %}
+            <tr>
+                <td>{{ g.id }}</td>
+                <td>{{ g.room_name }}</td>
+                <td>@{{ g.created_by }}</td>
+                <td>
+                    <form action="/admin/delete_group/{{ g.id }}" method="POST" onsubmit="return confirm('이 비밀 단톡방을 강제 삭제하시겠습니까?');">
+                        <button type="submit" class="btn-danger">🗑️ 방 강제 삭제</button>
+                    </form>
+                </td>
+                <td>
+                    <form action="/open_chat/room/{{ r.id }}/delete" method="POST" onsubmit="return confirm('이 오픈채팅방을 강제 폭파하시겠습니까? 내부 메시지가 영구 삭제됩니다.');">
+                        <button type="submit" class="btn-danger">💥 방 강제 삭제</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</body>
+</html>
