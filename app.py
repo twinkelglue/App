@@ -825,3 +825,46 @@ def delete_open_room(room_id):
         cur.close()
         conn.close()
         return "방 삭제 권한이 없습니다.", 403
+# ----------------------------------------------------------------
+# 🗑️ [전체 유저 공통] 오픈채팅 메시지 삭제 (내가 쓴 글 또는 방장/관리자가 삭제)
+# ----------------------------------------------------------------
+@app.route('/open_chat/message/<int:message_id>/delete', methods=['POST'])
+def delete_open_message(message_id):
+    user = session.get('user')
+    if not user:
+        return "로그인이 필요합니다.", 401
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # 1. 삭제하려는 메시지의 작성자(sender_real_id)와 해당 방의 방장(created_by)을 조회
+    cur.execute("""
+        SELECT m.room_id, m.sender_real_id, r.created_by 
+        FROM open_messages m
+        JOIN open_rooms r ON m.room_id = r.id
+        WHERE m.id = %s
+    """, (message_id,))
+    msg_info = cur.fetchone()
+
+    if not msg_info:
+        cur.close()
+        conn.close()
+        return "존재하지 않는 메시지입니다.", 404
+
+    # 2. 권한 체크
+    # 조건 A: 이 메시지를 직접 쓴 주인인 경우 (일반 유저 메삭)
+    # 조건 B: 이 방의 방장인 경우
+    # 조건 C: 최고 관리자 'admin'인 경우
+    if msg_info['sender_real_id'] == user or msg_info['created_by'] == user or user == 'admin':
+        # DB에서 메시지를 흔적도 없이 삭제
+        cur.execute("DELETE FROM open_messages WHERE id = %s", (message_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        # 보던 오픈채팅방 화면으로 새로고침
+        return redirect(url_for('open_chat_room', room_id=msg_info['room_id']))
+    else:
+        cur.close()
+        conn.close()
+        return "메시지를 삭제할 권한이 없습니다.", 403
