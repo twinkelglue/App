@@ -4,8 +4,10 @@ import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
 import time
+
 os.environ['TZ'] = 'Asia/Seoul'
 time.tzset()
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
 
@@ -59,7 +61,17 @@ def init_db():
         CREATE TABLE IF NOT EXISTS chat_rooms (
             id SERIAL PRIMARY KEY,
             room_name VARCHAR(100) NOT NULL,
-            created_by VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE
+            created_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL
+        );
+    """)
+
+    # 4-1. 단톡방 멤버 테이블 (기존 코드 누락분 보완)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS room_members (
+            id SERIAL PRIMARY KEY,
+            room_id INT REFERENCES chat_rooms(id) ON DELETE CASCADE,
+            user_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+            UNIQUE (room_id, user_id)
         );
     """)
     
@@ -85,6 +97,39 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+    # 7. 오픈채팅방 테이블 (기존 코드 누락분 보완)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS open_rooms (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(100) NOT NULL,
+            created_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL,
+            sub_host VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    # 8. 오픈채팅 메시지 테이블 (기존 코드 누락분 보완)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS open_messages (
+            id SERIAL PRIMARY KEY,
+            room_id INT REFERENCES open_rooms(id) ON DELETE CASCADE,
+            sender_anon VARCHAR(50) NOT NULL,
+            sender_real_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+            message TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    # 9. 오픈채팅 강퇴 유저 테이블 (기존 코드 누락분 보완)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS open_banned_users (
+            id SERIAL PRIMARY KEY,
+            room_id INT REFERENCES open_rooms(id) ON DELETE CASCADE,
+            username VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+            UNIQUE (room_id, username)
+        );
+    """)
     
     conn.commit()
     cur.close()
@@ -93,7 +138,6 @@ def init_db():
 # 앱 시작 시 DB 초기화
 init_db()
 
-# 유저가 활동할 때마다 마지막 접속 시간(last_seen) 갱신
 @app.before_request
 def update_last_seen():
     user = session.get('user')
@@ -137,8 +181,6 @@ def index():
             ORDER BY is_online DESC, u.nickname ASC
         """, (user,))
         all_users = cur.fetchall()
-    else:
-        my_rooms = []
         
     cur.close()
     conn.close()
@@ -190,10 +232,11 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username').strip()
         password = request.form.get('password')
-        # 👑 [최고 관리자 프리패스] 입력된 ID가 admin인 경우 DB 검사 없이 즉시 마스터 로그인
-        if username == 'admin' and password == 'admin1234':  # password 변수명은 본인 코드에 맞게 수정
+
+        if username == 'admin' and password == 'admin1234':
             session['user'] = 'admin'
             return "<script>alert('👑 최고 관리자 모드로 로그인되었습니다.'); location.href='/admin/dashboard';</script>"
+
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE username = %s AND password = %s AND is_active = TRUE", (username, password))
@@ -288,11 +331,7 @@ def create_group():
         try:
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
             row = cur.fetchone()
-            
-            if isinstance(row, dict):
-                room_id = row.get('id')
-            else:
-                room_id = row[0]
+            room_id = row.get('id') if isinstance(row, dict) else row[0]
                 
             cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, user))
             
@@ -531,7 +570,7 @@ def leave_group(room_id):
         return f"방을 나가는 중 오류가 발생했습니다: {str(e)}", 500
 
 # ----------------------------------------------------------------
-# 🌿 오픈채팅 기능 라우팅 (중복 제거 및 완벽 통합 완료)
+# 🌿 오픈채팅 기능 라우팅
 # ----------------------------------------------------------------
 
 @app.route('/open_chat_list')
@@ -567,7 +606,6 @@ def create_open_room():
     
     return redirect(url_for('open_chat_room', room_id=new_room_id))
 
-# [교정 완료] 방장도 닉네임 설정 가능 + 카톡 오픈채팅 권한 방식 적용
 @app.route('/open_chat/room/<int:room_id>', methods=['GET', 'POST'])
 def open_chat_room(room_id):
     user = session.get('user')
@@ -577,14 +615,12 @@ def open_chat_room(room_id):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 강퇴당한 유저인지 검사
     cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
     if cur.fetchone():
         cur.close()
         conn.close()
         return "<script>alert('해당 방장 또는 부방장에 의해 강퇴 처리되어 입장할 수 없습니다.'); history.back();</script>"
     
-    # 2. 방 정보 조회
     cur.execute("SELECT id, title, created_by, sub_host FROM open_rooms WHERE id = %s", (room_id,))
     room = cur.fetchone()
     if not room:
@@ -592,14 +628,9 @@ def open_chat_room(room_id):
         conn.close()
         return "존재하지 않는 방입니다.", 404
         
-    # 3. 권한 설정 (닉네임이 변경되어도 '본캐 로그인 ID' 기준으로 판별)
-    is_host = (room['created_by'] == user)
-    # 👑 최고 관리자 'admin' 계정인 경우, 무조건 방장(마스터) 권한을 내부적으로 부여
-    if user == 'admin':
-        is_host = True
+    is_host = (room['created_by'] == user or user == 'admin')
     is_sub_host = (room['sub_host'] == user)
     
-    # 4. 닉네임 설정을 위한 POST 처리 (방장, 일반인 공통으로 원하는 닉네임 설정)
     if request.method == 'POST':
         custom_name = request.form.get('custom_name', '').strip()
         if custom_name:
@@ -610,13 +641,11 @@ def open_chat_room(room_id):
             
     anon_name = session.get(f'anon_name_{room_id}')
     
-    # 5. 닉네임 세션이 아직 없는 경우 닉네임 입력 창 표시 (최초 1회만)
     if not anon_name:
         cur.close()
         conn.close()
         return render_template('open_chat.html', room=room, anon_name=None)
     
-    # 6. 메시지 내역 불러오기
     cur.execute("""
         SELECT id, sender_anon, sender_real_id, message, created_at 
         FROM open_messages 
@@ -636,7 +665,6 @@ def open_chat_room(room_id):
         is_sub_host=is_sub_host
     )
 
-# [통합 완료] 오픈채팅 메시지 전송 및 재강퇴 차단 검증 처리
 @app.route('/send_open_message/<int:room_id>', methods=['POST'])
 def send_open_message(room_id):
     user = session.get('user')
@@ -649,7 +677,6 @@ def send_open_message(room_id):
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 메시지 전송 시 강퇴 여부 재검사
         cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
         if cur.fetchone():
             cur.close()
@@ -711,7 +738,7 @@ def open_chat_ban_user(room_id):
         conn.close()
         return "방이 존재하지 않습니다.", 404
         
-    is_host = (room['created_by'] == user)
+    is_host = (room['created_by'] == user or user == 'admin')
     is_sub_host = (room['sub_host'] == user)
     
     if not (is_host or is_sub_host):
@@ -732,14 +759,11 @@ def open_chat_ban_user(room_id):
     conn.close()
     return redirect(url_for('open_chat_room', room_id=room_id))
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
 # ----------------------------------------------------------------
 # 👑 [최고 관리자 MASTER PANEL] 전용 백엔드 기능 
 # ----------------------------------------------------------------
 
-# [기능 1] 관리자 전용 통합 대시보드 (유저 목록 및 모든 방 목록 조회)
+# [통합 및 보완 완료] 유저 전체 상세조회 및 안정적 결함 방지 반영 대시보드
 @app.route('/admin/dashboard')
 def admin_dashboard():
     user = session.get('user')
@@ -749,25 +773,34 @@ def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 전체 회원 목록 (탈퇴 안 한 유저 위주, 관리자 제외)
-    cur.execute("SELECT username, nickname, bio, is_active FROM users WHERE username != 'admin' ORDER BY username ASC")
-    all_users = cur.fetchall()
+    all_users = []
+    group_rooms = []
+    open_rooms = []
     
-    # 개설된 모든 일반 단톡방 목록
-    cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
-    group_rooms = cur.fetchall()
+    try:
+        # 원래 기획에 상응하는 닉네임, 소개글, 활성화 여부 전체 복원 조회
+        cur.execute("SELECT username, nickname, bio, is_active FROM users WHERE username != 'admin' ORDER BY username ASC")
+        all_users = cur.fetchall()
+    except:
+        conn.rollback()
     
-    # 개설된 모든 오픈채팅방 목록
-    cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
-    open_rooms = cur.fetchall()
-    
+    try:
+        cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
+        group_rooms = cur.fetchall()
+    except:
+        conn.rollback()
+        
+    try:
+        cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
+        open_rooms = cur.fetchall()
+    except:
+        conn.rollback()
+        
     cur.close()
     conn.close()
     
     return render_template('admin_dashboard.html', all_users=all_users, group_rooms=group_rooms, open_rooms=open_rooms)
 
-
-# [기능 2] 빌런 유저 강제 탈퇴 및 영구 차단
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
@@ -776,9 +809,7 @@ def admin_ban_user(username):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 유저 비활성화 (is_active = FALSE 처리하여 로그인 원천 차단)
     cur.execute("UPDATE users SET is_active = FALSE WHERE username = %s", (username,))
-    # 팔로우 관계 및 해당 유저가 쓴 글 등 흔적 정리
     cur.execute("DELETE FROM follows WHERE follower = %s OR following = %s", (username, username))
     
     conn.commit()
@@ -786,8 +817,6 @@ def admin_ban_user(username):
     conn.close()
     return "<script>alert('해당 유저가 영구 차단(탈퇴) 되었습니다.'); location.href='/admin/dashboard';</script>"
 
-
-# [기능 3] 일반 단톡방 강제 폭파
 @app.route('/admin/delete_group/<int:room_id>', methods=['POST'])
 def admin_delete_group(room_id):
     if session.get('user') != 'admin':
@@ -801,8 +830,6 @@ def admin_delete_group(room_id):
     conn.close()
     return "<script>alert('일반 단톡방이 강제 삭제되었습니다.'); location.href='/admin/dashboard';</script>"
 
-
-# [기능 4] 오픈채팅방 강제 폭파
 @app.route('/open_chat/room/<int:room_id>/delete', methods=['POST'])
 def delete_open_room(room_id):
     user = session.get('user')
@@ -819,54 +846,17 @@ def delete_open_room(room_id):
         conn.close()
         return "존재하지 않는 방입니다.", 404
         
-    # 최고 관리자이거나 원래 방장일 때만 삭제 허용
     if user == 'admin' or room['created_by'] == user:
         cur.execute("DELETE FROM open_rooms WHERE id = %s", (room_id,))
         conn.commit()
         cur.close()
         conn.close()
         return "<script>alert('오픈채팅방이 성공적으로 삭제되었습니다.'); location.href='/open_chat_list';</script>"
-        # ----------------------------------------------------------------
-# 👑 [최고 관리자] 기존 대시보드 HTML 연동용 라우트 (안전 보완 버전)
-# ----------------------------------------------------------------
-@app.route('/admin/dashboard')
-def admin_dashboard():
-    user = session.get('user')
-    if user != 'admin':
-        return "권한이 없습니다. 최고 관리자만 접근 가능합니다.", 403
-        
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    # 1. 회원 테이블 조회 (users 또는 members 둘 다 대응)
-    all_users = []
-    for table in ['users', 'members']:
-        try:
-            cur.execute(f"SELECT username FROM {table} WHERE username != 'admin' ORDER BY username ASC")
-            all_users = cur.fetchall()
-            break
-        except:
-            conn.rollback()
-    
-    # 2. 일반 단톡방 조회 (테이블 없어도 에러 안 나게 방어)
-    group_rooms = []
-    try:
-        cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
-        group_rooms = cur.fetchall()
-    except:
-        conn.rollback()
-        
-    # 3. 오픈채팅방 조회 (테이블 없어도 에러 안 나게 방어)
-    open_rooms = []
-    try:
-        cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
-        open_rooms = cur.fetchall()
-    except:
-        conn.rollback()
-        
-    cur.close()
-    conn.close()
-    
-    # 이미 가지고 계신 HTML 파일에 데이터를 넘겨줍니다!
-    return render_template('admin_dashboard.html', all_users=all_users, group_rooms=group_rooms, open_rooms=open_rooms)
- 
+    else:
+        cur.close()
+        conn.close()
+        return "삭제 권한이 없습니다.", 403
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
