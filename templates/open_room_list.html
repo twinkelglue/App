@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌿 오픈채팅 광장</title>
+    <style>
+        :root {
+            --bg-main: #0b0f19;
+            --bg-card: #151b2c;
+            --accent: #10b981;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        body {
+            margin: 0; padding: 20px; font-family: sans-serif;
+            background-color: var(--bg-main); color: var(--text-main);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .container { width: 100%; max-width: 500px; }
+        h1 { color: var(--accent); font-size: 1.5rem; text-align: center; margin-bottom: 25px; }
+        
+        /* 방 만들기 폼 */
+        .create-box {
+            background-color: var(--bg-card); padding: 18px; border-radius: 12px;
+            border: 1px solid #1e293b; margin-bottom: 25px;
+        }
+        .create-box h3 { margin: 0 0 10px 0; font-size: 1rem; color: var(--accent); }
+        .input-group { display: flex; gap: 8px; }
+        .input-group input {
+            flex: 1; background-color: #0b0f19; border: 1px solid #1e293b;
+            border-radius: 8px; padding: 10px; color: white; outline: none;
+        }
+        .input-group button {
+            background-color: var(--accent); color: white; border: none;
+            border-radius: 8px; padding: 0 16px; font-weight: bold; cursor: pointer;
+        }
+
+        /* 방 목록 */
+        .room-item {
+            background-color: var(--bg-card); padding: 15px; border-radius: 10px;
+            border: 1px solid #1e293b; margin-bottom: 12px; display: flex;
+            justify-content: space-between; align-items: center;
+            text-decoration: none; color: white; transition: 0.2s;
+        }
+        .room-item:hover { border-color: var(--accent); background-color: #1e263d; }
+        .room-title { font-weight: bold; font-size: 1.05rem; }
+        .room-info { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+        .enter-badge { background-color: #1e293b; color: var(--accent); font-size: 0.8rem; padding: 6px 12px; border-radius: 20px; font-weight: bold; }
+        .no-rooms { text-align: center; color: var(--text-muted); margin-top: 40px; font-size: 0.9rem; }
+        .back-btn { display: block; text-align: center; color: var(--text-muted); font-size: 0.9rem; text-decoration: none; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌿 익명 오픈채팅 광장</h1>
+
+    <!-- 🛠️ 방 만들기 상자 -->
+    <div class="create-box">
+        <h3>✨ 새로운 오픈채팅방 개설</h3>
+        <form action="{{ url_for('create_open_room') }}" method="POST" class="input-group">
+            <input type="text" name="room_title" placeholder="방 제목을 입력하세요... (예: MBTI 토론방)" required max="50">
+            <button type="submit">만들기</button>
+        </form>
+    </div>
+
+    <!-- 📜 방 목록 구역 -->
+    <div style="margin-bottom: 8px; font-size: 0.85rem; color: var(--text-muted); font-weight: bold;">개설된 대화방 목록</div>
+    {% for room in rooms %}
+        <a href="{{ url_for('open_chat_room', room_id=room.id) }}" class="room-item">
+            <div>
+                <div class="room-title">💬 {{ room.title }}</div>
+                <div class="room-info">개설자: 익명 | 개설일: {{ room.created_at.strftime('%m-%d %H:%M') }}</div>
+            </div>
+            <div class="enter-badge">입장</div>
+        </a>
+    {% endfor %}
+
+    {% if not rooms %}
+        <div class="no-rooms">아직 개설된 오픈채팅방이 없습니다.<br>첫 번째 방을 만들어보세요!</div>
+    {% endif %}
+
+    <a href="{{ url_for('index') }}" class="back-btn">🏠 홈으로 돌아가기</a>
+</div>
+
+</body>
+</html>
