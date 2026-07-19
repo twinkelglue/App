@@ -727,3 +727,98 @@ def open_chat_ban_user(room_id):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+# ----------------------------------------------------------------
+# 👑 [최고 관리자 MASTER PANEL] 전용 백엔드 기능 
+# ----------------------------------------------------------------
+
+# [기능 1] 관리자 전용 통합 대시보드 (유저 목록 및 모든 방 목록 조회)
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    user = session.get('user')
+    if user != 'admin':
+        return "권한이 없습니다. 최고 관리자만 접근 가능합니다.", 403
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 전체 회원 목록 (탈퇴 안 한 유저 위주, 관리자 제외)
+    cur.execute("SELECT username, nickname, bio, is_active FROM users WHERE username != 'admin' ORDER BY username ASC")
+    all_users = cur.fetchall()
+    
+    # 개설된 모든 일반 단톡방 목록
+    cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
+    group_rooms = cur.fetchall()
+    
+    # 개설된 모든 오픈채팅방 목록
+    cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
+    open_rooms = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    return render_template('admin_dashboard.html', all_users=all_users, group_rooms=group_rooms, open_rooms=open_rooms)
+
+
+# [기능 2] 빌런 유저 강제 탈퇴 및 영구 차단
+@app.route('/admin/ban_user/<username>', methods=['POST'])
+def admin_ban_user(username):
+    if session.get('user') != 'admin':
+        return "권한이 없습니다.", 403
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 유저 비활성화 (is_active = FALSE 처리하여 로그인 원천 차단)
+    cur.execute("UPDATE users SET is_active = FALSE WHERE username = %s", (username,))
+    # 팔로우 관계 및 해당 유저가 쓴 글 등 흔적 정리
+    cur.execute("DELETE FROM follows WHERE follower = %s OR following = %s", (username, username))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    return "<script>alert('해당 유저가 영구 차단(탈퇴) 되었습니다.'); location.href='/admin/dashboard';</script>"
+
+
+# [기능 3] 일반 단톡방 강제 폭파
+@app.route('/admin/delete_group/<int:room_id>', methods=['POST'])
+def admin_delete_group(room_id):
+    if session.get('user') != 'admin':
+        return "권한이 없습니다.", 403
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM chat_rooms WHERE id = %s", (room_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return "<script>alert('일반 단톡방이 강제 삭제되었습니다.'); location.href='/admin/dashboard';</script>"
+
+
+# [기능 4] 오픈채팅방 강제 폭파
+@app.route('/open_chat/room/<int:room_id>/delete', methods=['POST'])
+def delete_open_room(room_id):
+    user = session.get('user')
+    if not user: 
+        return redirect(url_for('login'))
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT created_by FROM open_rooms WHERE id = %s", (room_id,))
+    room = cur.fetchone()
+    if not room:
+        cur.close()
+        conn.close()
+        return "존재하지 않는 방입니다.", 404
+        
+    # 최고 관리자이거나 원래 방장일 때만 삭제 허용
+    if user == 'admin' or room['created_by'] == user:
+        cur.execute("DELETE FROM open_rooms WHERE id = %s", (room_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return "<script>alert('오픈채팅방이 성공적으로 삭제되었습니다.'); location.href='/open_chat_list';</script>"
+    else:
+        cur.close()
+        conn.close()
+        return "방 삭제 권한이 없습니다.", 403
