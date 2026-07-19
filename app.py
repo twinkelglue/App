@@ -3,7 +3,9 @@ from flask import Flask, render_template, request, redirect, session, url_for, f
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-
+import time
+os.environ['TZ'] = 'Asia/Seoul'
+time.tzset()
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
 
@@ -867,7 +869,4 @@ def admin_dashboard():
     
     # 이미 가지고 계신 HTML 파일에 데이터를 넘겨줍니다!
     return render_template('admin_dashboard.html', all_users=all_users, group_rooms=group_rooms, open_rooms=open_rooms)
-    else:
-        cur.close()
-        conn.close()
-        return "방 삭제 권한이 없습니다.", 403
+ 
