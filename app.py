@@ -188,7 +188,10 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username').strip()
         password = request.form.get('password')
-        
+        # 👑 [최고 관리자 프리패스] 입력된 ID가 admin인 경우 DB 검사 없이 즉시 마스터 로그인
+        if username == 'admin' and password == 'admin1234':  # password 변수명은 본인 코드에 맞게 수정
+            session['user'] = 'admin'
+            return "<script>alert('👑 최고 관리자 모드로 로그인되었습니다.'); location.href='/admin/dashboard';</script>"
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE username = %s AND password = %s AND is_active = TRUE", (username, password))
@@ -825,21 +828,3 @@ def delete_open_room(room_id):
         cur.close()
         conn.close()
         return "방 삭제 권한이 없습니다.", 403
-        # ----------------------------------------------------------------
-# 🔐 [최고 관리자 전용] 비밀 마스터 로그인 기능
-# ----------------------------------------------------------------
-@app.route('/secret-admin-login', methods=['GET', 'POST'])
-def secret_admin_login():
-    if request.method == 'POST':
-        admin_id = request.form.get('admin_id')
-        admin_pw = request.form.get('admin_pw')
-        
-        # 👑 최고 관리자 아이디와 비밀번호 지정 (원하는 대로 변경 가능!)
-        if admin_id == 'admin' and admin_pw == 'admin1234':
-            session['user'] = 'admin'  # 세션에 마스터 권한 각인
-            return "<script>alert('👑 최고 관리자(마스터) 모드로 로그인되었습니다.'); location.href='/admin/dashboard';</script>"
-        else:
-            return "<script>alert('로그인 정보가 틀렸습니다.'); history.back();</script>"
-            
-    # GET 요청 시 비밀 로그인 화면 보여주기
-    return render_template('admin_login.html')
