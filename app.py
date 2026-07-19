@@ -545,7 +545,11 @@ def leave_group(room_id):
         cur.close()
         conn.close()
         return f"방을 나가는 중 오류가 발생했습니다: {str(e)}", 500
-        # 🌿 [오픈채팅] 1. 방 목록 보기 화면
+      # ----------------------------------------------------------------
+# 🌿 [고도화된 오픈채팅] 방장/부방장/강퇴 기능 포함 버전
+# ----------------------------------------------------------------
+
+# 🌿 [오픈채팅] 1. 방 목록 보기 화면
 @app.route('/open_chat_list')
 def open_chat_list():
     user = session.get('user')
@@ -553,15 +557,14 @@ def open_chat_list():
     
     conn = get_db_connection()
     cur = conn.cursor()
-    # 개설된 모든 오픈채팅방을 최신순으로 가져옴
-    cur.execute("SELECT id, title, created_by, created_at FROM open_rooms ORDER BY created_at DESC")
+    cur.execute("SELECT id, title, created_by, sub_host, created_at FROM open_rooms ORDER BY created_at DESC")
     rooms = cur.fetchall()
     cur.close()
     conn.close()
     
     return render_template('open_room_list.html', rooms=rooms)
 
-# 🌿 [오픈채팅] 2. 새로운 방 만들기 처리
+# 🌿 [오픈채팅] 2. 새로운 방 만들기 처리 (방장이 자동으로 본인이 됨)
 @app.route('/create_open_room', methods=['POST'])
 def create_open_room():
     user = session.get('user')
@@ -573,17 +576,15 @@ def create_open_room():
         
     conn = get_db_connection()
     cur = conn.cursor()
-    # DB에 새 방 저장
     cur.execute("INSERT INTO open_rooms (title, created_by) VALUES (%s, %s) RETURNING id", (room_title, user))
     new_room_id = cur.fetchone()['id']
     conn.commit()
     cur.close()
     conn.close()
     
-    # 방을 만들자마자 해당 방으로 바로 입장시킵니다.
     return redirect(url_for('open_chat_room', room_id=new_room_id))
 
-# 🌿 [오픈채팅] 3. 특정 방 입장 & 닉네임 설정 화면
+# 🌿 [오픈채팅] 3. 특정 방 입장 & 관리 권한 확인
 @app.route('/open_chat/room/<int:room_id>', methods=['GET', 'POST'])
 def open_chat_room(room_id):
     user = session.get('user')
@@ -592,41 +593,48 @@ def open_chat_room(room_id):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 방이 존재하는지 확인
-    cur.execute("SELECT id, title FROM open_rooms WHERE id = %s", (room_id,))
+    # 강퇴당한 유저인지 검사
+    cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return "<script>alert('해당 방장 또는 부방장에 의해 강퇴 처리되어 입장할 수 없습니다.'); history.back();</script>"
+    
+    cur.execute("SELECT id, title, created_by, sub_host FROM open_rooms WHERE id = %s", (room_id,))
     room = cur.fetchone()
     if not room:
         cur.close()
         conn.close()
         return "존재하지 않는 방입니다.", 404
         
-    # 유저가 닉네임을 설정해서 POST로 보낸 경우 세션에 저장
+    # 권한 체크 (본캐 아이디 기준)
+    is_host = (room['created_by'] == user)
+    is_sub_host = (room['sub_host'] == user)
+        
     if request.method == 'POST':
         custom_name = request.form.get('custom_name', '').strip()
         if custom_name:
-            # 방마다 고유한 닉네임을 가질 수 있도록 세션 키를 방 번호별로 분리합니다.
             session[f'anon_name_{room_id}'] = custom_name
             cur.close()
             conn.close()
             return redirect(url_for('open_chat_room', room_id=room_id))
             
-    # 해당 방에서 사용할 닉네임이 세션에 있는지 확인
     anon_name = session.get(f'anon_name_{room_id}')
     
-    # 해당 방의 최근 메시지 50개 가져오기
+    # 메시지를 가져올 때, 보낸 사람의 본캐 아이디(sender_real_id)도 함께 가져옵니다 (강퇴용)
     cur.execute("""
-        SELECT id, sender_anon, message, created_at 
+        SELECT id, sender_anon, sender_real_id, message, created_at 
         FROM open_messages 
         WHERE room_id = %s 
-        ORDER BY created_at ASC LIMIT 50
+        ORDER BY created_at ASC LIMIT 100
     """, (room_id,))
     messages = cur.fetchall()
     
     cur.close()
     conn.close()
-    return render_template('open_chat.html', room=room, messages=messages, anon_name=anon_name)
+    return render_template('open_chat.html', room=room, messages=messages, anon_name=anon_name, is_host=is_host, is_sub_host=is_sub_host)
 
-# 🌿 [오픈채팅] 4. 오픈채팅 메시지 전송 처리
+# 🌿 [오픈채팅] 4. 메시지 전송 처리 (본캐 아이디 저장 로직 추가)
 @app.route('/send_open_message/<int:room_id>', methods=['POST'])
 def send_open_message(room_id):
     user = session.get('user')
@@ -638,15 +646,95 @@ def send_open_message(room_id):
     if message:
         conn = get_db_connection()
         cur = conn.cursor()
+        
+        # 강퇴당한 유저인지 한 번 더 검사
+        cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return "채팅 권한이 없습니다.", 403
+            
         cur.execute("""
-            INSERT INTO open_messages (room_id, sender_anon, message) 
-            VALUES (%s, %s, %s)
-        """, (room_id, anon_name, message))
+            INSERT INTO open_messages (room_id, sender_anon, sender_real_id, message) 
+            VALUES (%s, %s, %s, %s)
+        """, (room_id, anon_name, user, message))
         conn.commit()
         cur.close()
         conn.close()
         
     return redirect(url_for('open_chat_room', room_id=room_id))
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+
+# 👑 [오픈채팅 권한] 5. 부방장 임명/해임 (방장만 가능)
+@app.route('/open_chat/room/<int:room_id>/set_sub', methods=['POST'])
+def open_chat_set_sub(room_id):
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+    
+    target_user = request.form.get('target_user') # 임명할 유저의 본캐 ID
+    action = request.form.get('action') # 'appoint' 또는 'dismiss'
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 현재 유저가 방장인지 확인
+    cur.execute("SELECT created_by FROM open_rooms WHERE id = %s", (room_id,))
+    room = cur.fetchone()
+    if not room or room['created_by'] != user:
+        cur.close()
+        conn.close()
+        return "방장만 부방장을 지정할 수 있습니다.", 403
+        
+    if action == 'appoint':
+        cur.execute("UPDATE open_rooms SET sub_host = %s WHERE id = %s", (target_user, room_id))
+    elif action == 'dismiss':
+        cur.execute("UPDATE open_rooms SET sub_host = NULL WHERE id = %s", (room_id,))
+        
+    conn.commit()
+    cur.close()
+    conn.close()
+    return redirect(url_for('open_chat_room', room_id=room_id))
+
+# 🔨 [오픈채팅 권한] 6. 유저 강퇴하기 (방장 및 부방장 가능, 단 부방장은 방장 강퇴 불가)
+@app.route('/open_chat/room/<int:room_id>/ban', methods=['POST'])
+def open_chat_ban_user(room_id):
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+    
+    target_user = request.form.get('target_user') # 강퇴할 유저의 본캐 ID
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 방 정보 확인
+    cur.execute("SELECT created_by, sub_host FROM open_rooms WHERE id = %s", (room_id,))
+    room = cur.fetchone()
+    if not room:
+        cur.close()
+        conn.close()
+        return "방이 존재하지 않습니다.", 404
+        
+    is_host = (room['created_by'] == user)
+    is_sub_host = (room['sub_host'] == user)
+    
+    # 권한 타당성 검사
+    if not (is_host or is_sub_host):
+        cur.close()
+        conn.close()
+        return "강퇴 권한이 없습니다.", 403
+        
+    # 부방장은 방장을 강퇴할 수 없음
+    if is_sub_host and target_user == room['created_by']:
+        cur.close()
+        conn.close()
+        return "부방장은 방장을 강퇴할 수 없습니다.", 403
+        
+    # 강퇴 테이블에 등록
+    cur.execute("INSERT INTO open_banned_users (room_id, username) VALUES (%s, %s) ON CONFLICT DO NOTHING", (room_id, target_user))
+    
+    # 강퇴당한 유저가 쓴 해당 방의 메시지 전부 삭제 처리
+    cur.execute("DELETE FROM open_messages WHERE room_id = %s AND sender_real_id = %s", (room_id, target_user))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    return redirect(url_for('open_chat_room', room_id=room_id))
