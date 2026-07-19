@@ -103,15 +103,55 @@
         <a href="{{ url_for('open_chat_list') }}" class="exit-btn">나가기</a>
     </div>
 
-    <div class="chat-box" id="chatBox">
-        {% for msg in messages %}
-            <div class="msg-row {% if msg.sender_anon == anon_name %}me{% else %}other{% endif %}">
-                <div class="anon-name">{{ msg.sender_anon }}</div>
-                <div class="bubble">{{ msg.message }}</div>
-                <div class="time">{{ msg.created_at.strftime('%H:%M') }}</div>
+<div class="chat-box" id="chatBox">
+    {% for msg in messages %}
+        <div class="msg-row {% if msg.sender_anon == anon_name %}me{% else %}other{% endif %}">
+            
+            <!-- 닉네임 및 권한 뱃지 / 관리자 메뉴 라인 -->
+            <div class="anon-name" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span>{{ msg.sender_anon }}</span>
+                
+                <!-- 👑 방장/부방장 왕관 표시 -->
+                {% if msg.sender_real_id == room.created_by %}
+                    <span style="color: #fbbf24; font-size: 0.7rem; background: rgba(251, 191, 36, 0.15); padding: 1px 4px; border-radius: 4px;">👑 방장</span>
+                {% elif msg.sender_real_id == room.sub_host %}
+                    <span style="color: #60a5fa; font-size: 0.7rem; background: rgba(96, 165, 250, 0.15); padding: 1px 4px; border-radius: 4px;">⭐ 부방장</span>
+                {% endif %}
+                
+                <!-- 🛠️ 관리자 전용 기능 메뉴 -->
+                {% if (is_host or is_sub_host) and msg.sender_real_id != session.get('user') %}
+                    <div style="display: inline-flex; gap: 4px; margin-left: 4px;">
+                        <!-- 강퇴 버튼 -->
+                        <form action="{{ url_for('open_chat_ban_user', room_id=room.id) }}" method="POST" style="margin:0;" onsubmit="return confirm('이 유저를 정말 강퇴하시겠습니까? 관련 메시지도 모두 삭제됩니다.');">
+                            <input type="hidden" name="target_user" value="{{ msg.sender_real_id }}">
+                            <button type="submit" style="background: #ef4444; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">강퇴</button>
+                        </form>
+                        
+                        <!-- 부방장 임명/해임 버튼 (오직 방장만 가능) -->
+                        {% if is_host %}
+                            <form action="{{ url_for('open_chat_set_sub', room_id=room.id) }}" method="POST" style="margin:0;">
+                                <input type="hidden" name="target_user" value="{{ msg.sender_real_id }}">
+                                {% if msg.sender_real_id == room.sub_host %}
+                                    <input type="hidden" name="action" value="dismiss">
+                                    <button type="submit" style="background: #64748b; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">해임</button>
+                                {% else %}
+                                    <input type="hidden" name="action" value="appoint">
+                                    <button type="submit" style="background: #3b82f6; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">부방장</button>
+                                {% endif %}
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endif %}
             </div>
-        {% endfor %}
-    </div>
+
+            <!-- 말풍선 및 시간 -->
+            <div class="bubble">{{ msg.message }}</div>
+            <div class="time">
+                {% if msg.created_at %}{{ msg.created_at.strftime('%H:%M') }}{% endif %}
+            </div>
+        </div>
+    {% endfor %}
+</div>
 
     <form class="input-form" action="{{ url_for('send_open_message', room_id=room.id) }}" method="POST">
         <input type="text" name="message" placeholder="메시지를 입력하세요..." required autocomplete="off">
