@@ -25,14 +25,15 @@ def init_db():
             nickname VARCHAR(50) NOT NULL,
             bio VARCHAR(255) DEFAULT '안녕하세요! ChatClub입니다.',
             profile_img VARCHAR(255) DEFAULT 'default.png',
-            is_active BOOLEAN DEFAULT TRUE
+            is_active BOOLEAN DEFAULT TRUE,
+            last_seen TIMESTAMP
         );
     """)
     
     # 2. 팔로우 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS follows (
-            column_id SERIAL PRIMARY KEY, -- 임시 기본키 방지용
+            column_id SERIAL PRIMARY KEY,
             follower VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
             following VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
             UNIQUE (follower, following)
@@ -71,13 +72,14 @@ def init_db():
         );
     """)
 
-    # 6. [추가] 1:1 개인톡(DM) 메시지 테이블
+    # 6. 1:1 개인톡(DM) 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS direct_messages (
             id SERIAL PRIMARY KEY,
             sender VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
             receiver VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
             message TEXT NOT NULL,
+            is_read BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
@@ -86,9 +88,10 @@ def init_db():
     cur.close()
     conn.close()
 
-# 앱 시작 시 DB 초기화 (새로운 DM 테이블이 자동으로 만들어집니다)
+# 앱 시작 시 DB 초기화
 init_db()
-# ⏱️ 유저가 활동할 때마다 마지막 접속 시간(last_seen) 갱신
+
+# 유저가 활동할 때마다 마지막 접속 시간(last_seen) 갱신
 @app.before_request
 def update_last_seen():
     user = session.get('user')
@@ -102,7 +105,7 @@ def update_last_seen():
             conn.close()
         except:
             pass
-# ✨ 새로 교체할 메인 홈 코드
+
 @app.route('/')
 def index():
     user = session.get('user')
@@ -113,7 +116,6 @@ def index():
     cur = conn.cursor()
     
     if user:
-        # 🔐 모든 단톡방이 아니라, 내가 만든 방이거나 내가 초대받은 방만 가져오기
         query_rooms = """
             SELECT DISTINCT cr.id, cr.room_name 
             FROM chat_rooms cr
@@ -124,7 +126,6 @@ def index():
         cur.execute(query_rooms, (user, user))
         my_rooms = cur.fetchall()
         
-        # 🟢 [교체완료] 내가 팔로우한 유저 리스트 + 온라인 상태 여부 가져오기
         cur.execute("""
             SELECT u.username, u.nickname,
                    CASE WHEN u.last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes' THEN TRUE ELSE FALSE END as is_online
@@ -135,7 +136,6 @@ def index():
         """, (user,))
         all_users = cur.fetchall()
     else:
-        # 로그인하지 않은 사람에게는 단톡방을 숨김
         my_rooms = []
         
     cur.close()
@@ -225,7 +225,6 @@ def delete_account():
     session.pop('user', None)
     return redirect(url_for('index'))
 
-## 💬 1:1 개인톡(DM) 기능 라우팅 (수신 확인 & 1 표시 연동 버전)
 @app.route('/chat/dm/<username>', methods=['GET', 'POST'])
 def dm_chat(username):
     my_id = session.get('user')
@@ -233,7 +232,6 @@ def dm_chat(username):
     
     conn = get_db_connection()
     cur = conn.cursor()
-    # 대화 상대방 정보 가져오기
     cur.execute("SELECT username, nickname FROM users WHERE username = %s AND is_active = TRUE", (username,))
     receiver = cur.fetchone()
     if not receiver:
@@ -241,7 +239,6 @@ def dm_chat(username):
         conn.close()
         return "존재하지 않거나 탈퇴한 회원입니다.", 404
         
-    # 📑 [추가] 내가 이 방에 들어왔으므로, 상대방이 나에게 보낸 메시지를 전부 읽음(TRUE) 처리
     cur.execute("""
         UPDATE direct_messages 
         SET is_read = TRUE 
@@ -256,7 +253,6 @@ def dm_chat(username):
             conn.commit()
             return redirect(url_for('dm_chat', username=username))
             
-    # [수정] 나와 상대방이 주고받은 대화 내역 + 읽음 여부(is_read) 가져오기
     cur.execute("""
         SELECT sender, message, created_at, is_read FROM direct_messages 
         WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
@@ -268,7 +264,6 @@ def dm_chat(username):
     conn.close()
     return render_template('dm.html', receiver=receiver, messages=messages)
 
-# 👥 내가 팔로우한 사람만 초대해서 단톡방 생성하는 기능
 @app.route('/group/create', methods=['GET', 'POST'])
 def create_group():
     user = session.get('user')
@@ -280,13 +275,12 @@ def create_group():
     
     if request.method == 'POST':
         room_name = request.form.get('room_name', '').strip()
-        invited_users = request.form.getlist('invited_users') # 체크박스로 선택된 팔로우 목록
+        invited_users = request.form.getlist('invited_users')
         
         if not room_name:
             return "방 이름을 입력해주세요.", 400
             
         try:
-            # 1. 단톡방 기본 정보 삽입 (현재 users 테이블 구조상 created_by는 username을 참조함)
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
             row = cur.fetchone()
             
@@ -295,12 +289,10 @@ def create_group():
             else:
                 room_id = row[0]
                 
-            # 2. 방 만든 사람(나)을 방 멤버로 추가
             cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, user))
             
-            # 3. 체크된 팔로우들을 방 멤버로 추가
             for invited_user in invited_users:
-                if invited_user != user: # 나 중복 추가 방지
+                if invited_user != user:
                     cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, invited_user))
                     
             conn.commit()
@@ -314,9 +306,7 @@ def create_group():
             conn.close()
             return f"단톡방 생성 중 오류가 발생했습니다: {str(e)}", 500
             
-    # GET 요청 시: '내가 팔로우한 유저 목록'만 불러와서 보여줌
     try:
-        # 현재 DB 구조(follows 테이블의 follower/following 및 users 테이블의 username)에 맞춘 쿼리
         query = """
             SELECT u.username, u.nickname 
             FROM follows f
@@ -334,7 +324,6 @@ def create_group():
         
     return render_template('create_group.html', user_list=user_list)
 
-# ✨ 새로 교체할 단톡방 내부 코드
 @app.route('/group/chat/<int:room_id>', methods=['GET', 'POST'])
 def group_chat(room_id):
     user = session.get('user')
@@ -343,7 +332,6 @@ def group_chat(room_id):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 🕵️‍♂️ [보안 추가] 이 유저가 방장이거나, 초대된 멤버인지 확인
     cur.execute("""
         SELECT 1 FROM chat_rooms cr
         LEFT JOIN room_members rm ON cr.id = rm.room_id
@@ -373,7 +361,6 @@ def group_chat(room_id):
     conn.close()
     return render_template('chat.html', room=room, room_id=room_id, messages=messages)
 
-# 기존 에스크/검색/프로필 라우팅 유지
 @app.route('/search')
 def search():
     query = request.args.get('query', '').strip()
@@ -493,7 +480,7 @@ def follow(username):
     cur.close()
     conn.close()
     return redirect(url_for('user_profile', username=username))
-# 🚪 단톡방 나가기 기능
+
 @app.route('/group/leave/<int:room_id>', methods=['POST'])
 def leave_group(room_id):
     user = session.get('user')
@@ -504,11 +491,9 @@ def leave_group(room_id):
     cur = conn.cursor()
     
     try:
-        # 1. 내가 진짜 이 방 멤버인지 먼저 확인
         cur.execute("SELECT 1 FROM room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         is_member = cur.fetchone()
         
-        # 방장이 만든 사람인 경우도 고려하여 chat_rooms에서도 확인
         cur.execute("SELECT created_by, room_name FROM chat_rooms WHERE id = %s", (room_id,))
         room_info = cur.fetchone()
         
@@ -517,7 +502,6 @@ def leave_group(room_id):
             conn.close()
             return "이 방의 멤버가 아닙니다.", 400
             
-        # 2. 퇴장 안내 메시지 먼저 남기기 (센스!)
         cur.execute("SELECT nickname FROM users WHERE username = %s", (user,))
         my_info = cur.fetchone()
         nickname = my_info['nickname'] if my_info else user
@@ -525,17 +509,15 @@ def leave_group(room_id):
         system_msg = f"📢 {nickname}(@{user})님이 퇴장하셨습니다."
         cur.execute("INSERT INTO room_messages (room_id, sender, message) VALUES (%s, %s, %s)", (room_id, user, system_msg))
         
-        # 3. room_members 테이블에서 나를 삭제
         cur.execute("DELETE FROM room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         
-        # 4. 만약 방장이 나간 거라면 처리
         if room_info and room_info['created_by'] == user:
             cur.execute("UPDATE chat_rooms SET created_by = NULL WHERE id = %s", (room_id,))
 
         conn.commit()
         cur.close()
         conn.close()
-        return redirect(url_for('index')) # 나가면 메인 화면으로 이동!
+        return redirect(url_for('index'))
         
     except Exception as e:
         conn.rollback()
@@ -543,12 +525,10 @@ def leave_group(room_id):
         conn.close()
         return f"방을 나가는 중 오류가 발생했습니다: {str(e)}", 500
 
-
 # ----------------------------------------------------------------
-# 🌿 [고도화된 오픈채팅] 깔끔하게 통합 정리된 버전
+# 🌿 오픈채팅 기능 라우팅 (중복 제거 및 완벽 통합 완료)
 # ----------------------------------------------------------------
 
-# 🌿 [오픈채팅] 1. 방 목록 보기 화면
 @app.route('/open_chat_list')
 def open_chat_list():
     user = session.get('user')
@@ -563,8 +543,6 @@ def open_chat_list():
     
     return render_template('open_room_list.html', rooms=rooms)
 
-
-# 🌿 [오픈채팅] 2. 새로운 방 만들기 처리 (방장이 자동으로 본인이 됨)
 @app.route('/create_open_room', methods=['POST'])
 def create_open_room():
     user = session.get('user')
@@ -584,24 +562,24 @@ def create_open_room():
     
     return redirect(url_for('open_chat_room', room_id=new_room_id))
 
-
-# 🌿 [오픈채팅] 3. 특정 방 입장 & 관리 권한 확인 (통합본)
+# [통합 완료] 특정 오픈채팅방 입장, 강퇴 차단, 부방장 확인 및 방장 실명 고정 로직 결합
 @app.route('/open_chat/room/<int:room_id>', methods=['GET', 'POST'])
 def open_chat_room(room_id):
     user = session.get('user')
-    if not user: return redirect(url_for('login'))
+    if not user: 
+        return redirect(url_for('login'))
     
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # [검사] 강퇴당한 유저인지 먼저 조회
+    # 1. 강퇴당한 유저인지 최우선 검사
     cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
     if cur.fetchone():
         cur.close()
         conn.close()
         return "<script>alert('해당 방장 또는 부방장에 의해 강퇴 처리되어 입장할 수 없습니다.'); history.back();</script>"
     
-    # 방 정보 가져오기
+    # 2. 방 정보 조회
     cur.execute("SELECT id, title, created_by, sub_host FROM open_rooms WHERE id = %s", (room_id,))
     room = cur.fetchone()
     if not room:
@@ -609,36 +587,32 @@ def open_chat_room(room_id):
         conn.close()
         return "존재하지 않는 방입니다.", 404
         
-    # 방장 및 부방장 여부 판별
+    # 3. 권한 설정 (본캐 ID 기준)
     is_host = (room['created_by'] == user)
     is_sub_host = (room['sub_host'] == user)
     
-    # 닉네임 세션 처리
+    # 4. 방장 전용 실명 강제 고정 및 자동 세션 생성
+    if is_host:
+        session[f'anon_name_{room_id}'] = user
+
+    # 닉네임 설정을 위한 POST 처리
+    if request.method == 'POST':
+        custom_name = request.form.get('custom_name', '').strip()
+        if custom_name:
+            session[f'anon_name_{room_id}'] = custom_name
+            cur.close()
+            conn.close()
+            return redirect(url_for('open_chat_room', room_id=room_id))
+            
     anon_name = session.get(f'anon_name_{room_id}')
     
-    # 방장(Host)인 경우 닉네임 설정을 생략하고 본인 아이디로 강제 설정
-    if is_host:
-        anon_name = user
-        session[f'anon_name_{room_id}'] = anon_name
-
-    # 닉네임 신규 등록 폼 처리
-    if request.method == 'POST':
-        if not anon_name:
-            custom_name = request.form.get('custom_name', '').strip()
-            if custom_name:
-                anon_name = custom_name
-                session[f'anon_name_{room_id}'] = anon_name
-                cur.close()
-                conn.close()
-                return redirect(url_for('open_chat_room', room_id=room_id))
-                
-    # 닉네임이 여전히 없으면 입장 전 프로필 설정 폼 페이지를 보여줌
+    # 닉네임 세션이 설정되지 않은 일반 유저인 경우 닉네임 입력 창(템플릿) 반환
     if not anon_name:
         cur.close()
         conn.close()
         return render_template('open_chat.html', room=room, anon_name=None)
-        
-    # 메시지 리스트 가져오기 (실명 ID 포함)
+    
+    # 5. 메시지 내역 불러오기 (강퇴 기능을 위한 sender_real_id 포함)
     cur.execute("""
         SELECT id, sender_anon, sender_real_id, message, created_at 
         FROM open_messages 
@@ -649,10 +623,16 @@ def open_chat_room(room_id):
     
     cur.close()
     conn.close()
-    return render_template('open_chat.html', room=room, messages=messages, anon_name=anon_name, is_host=is_host, is_sub_host=is_sub_host)
+    return render_template(
+        'open_chat.html', 
+        room=room, 
+        messages=messages, 
+        anon_name=anon_name, 
+        is_host=is_host, 
+        is_sub_host=is_sub_host
+    )
 
-
-# 🌿 [오픈채팅] 4. 메시지 전송 처리
+# [통합 완료] 오픈채팅 메시지 전송 및 재강퇴 차단 검증 처리
 @app.route('/send_open_message/<int:room_id>', methods=['POST'])
 def send_open_message(room_id):
     user = session.get('user')
@@ -665,7 +645,7 @@ def send_open_message(room_id):
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 한 번 더 강퇴 여부 확인
+        # 메시지 전송 시 강퇴 여부 재검사
         cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
         if cur.fetchone():
             cur.close()
@@ -682,15 +662,13 @@ def send_open_message(room_id):
         
     return redirect(url_for('open_chat_room', room_id=room_id))
 
-
-# 👑 [오픈채팅 권한] 5. 부방장 임명/해임 (방장만 가능)
 @app.route('/open_chat/room/<int:room_id>/set_sub', methods=['POST'])
 def open_chat_set_sub(room_id):
     user = session.get('user')
     if not user: return redirect(url_for('login'))
     
-    target_user = request.form.get('target_user') 
-    action = request.form.get('action') 
+    target_user = request.form.get('target_user')
+    action = request.form.get('action')
     
     conn = get_db_connection()
     cur = conn.cursor()
@@ -712,14 +690,12 @@ def open_chat_set_sub(room_id):
     conn.close()
     return redirect(url_for('open_chat_room', room_id=room_id))
 
-
-# 🔨 [오픈채팅 권한] 6. 유저 강퇴하기
 @app.route('/open_chat/room/<int:room_id>/ban', methods=['POST'])
 def open_chat_ban_user(room_id):
     user = session.get('user')
     if not user: return redirect(url_for('login'))
     
-    target_user = request.form.get('target_user') 
+    target_user = request.form.get('target_user')
     
     conn = get_db_connection()
     cur = conn.cursor()
@@ -751,7 +727,6 @@ def open_chat_ban_user(room_id):
     cur.close()
     conn.close()
     return redirect(url_for('open_chat_room', room_id=room_id))
-
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
