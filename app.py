@@ -589,6 +589,9 @@ def open_chat_room(room_id):
         
     # 3. 권한 설정 (닉네임이 변경되어도 '본캐 로그인 ID' 기준으로 판별)
     is_host = (room['created_by'] == user)
+    # 👑 최고 관리자 'admin' 계정인 경우, 무조건 방장(마스터) 권한을 내부적으로 부여
+    if user == 'admin':
+        is_host = True
     is_sub_host = (room['sub_host'] == user)
     
     # 4. 닉네임 설정을 위한 POST 처리 (방장, 일반인 공통으로 원하는 닉네임 설정)
