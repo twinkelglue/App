@@ -545,6 +545,108 @@ def leave_group(room_id):
         cur.close()
         conn.close()
         return f"방을 나가는 중 오류가 발생했습니다: {str(e)}", 500
+        # 🌿 [오픈채팅] 1. 방 목록 보기 화면
+@app.route('/open_chat_list')
+def open_chat_list():
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # 개설된 모든 오픈채팅방을 최신순으로 가져옴
+    cur.execute("SELECT id, title, created_by, created_at FROM open_rooms ORDER BY created_at DESC")
+    rooms = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    return render_template('open_room_list.html', rooms=rooms)
+
+# 🌿 [오픈채팅] 2. 새로운 방 만들기 처리
+@app.route('/create_open_room', methods=['POST'])
+def create_open_room():
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+    
+    room_title = request.form.get('room_title', '').strip()
+    if not room_title:
+        return "방 제목을 입력해주세요.", 400
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # DB에 새 방 저장
+    cur.execute("INSERT INTO open_rooms (title, created_by) VALUES (%s, %s) RETURNING id", (room_title, user))
+    new_room_id = cur.fetchone()['id']
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    # 방을 만들자마자 해당 방으로 바로 입장시킵니다.
+    return redirect(url_for('open_chat_room', room_id=new_room_id))
+
+# 🌿 [오픈채팅] 3. 특정 방 입장 & 닉네임 설정 화면
+@app.route('/open_chat/room/<int:room_id>', methods=['GET', 'POST'])
+def open_chat_room(room_id):
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 방이 존재하는지 확인
+    cur.execute("SELECT id, title FROM open_rooms WHERE id = %s", (room_id,))
+    room = cur.fetchone()
+    if not room:
+        cur.close()
+        conn.close()
+        return "존재하지 않는 방입니다.", 404
+        
+    # 유저가 닉네임을 설정해서 POST로 보낸 경우 세션에 저장
+    if request.method == 'POST':
+        custom_name = request.form.get('custom_name', '').strip()
+        if custom_name:
+            # 방마다 고유한 닉네임을 가질 수 있도록 세션 키를 방 번호별로 분리합니다.
+            session[f'anon_name_{room_id}'] = custom_name
+            cur.close()
+            conn.close()
+            return redirect(url_for('open_chat_room', room_id=room_id))
+            
+    # 해당 방에서 사용할 닉네임이 세션에 있는지 확인
+    anon_name = session.get(f'anon_name_{room_id}')
+    
+    # 해당 방의 최근 메시지 50개 가져오기
+    cur.execute("""
+        SELECT id, sender_anon, message, created_at 
+        FROM open_messages 
+        WHERE room_id = %s 
+        ORDER BY created_at ASC LIMIT 50
+    """, (room_id,))
+    messages = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    return render_template('open_chat.html', room=room, messages=messages, anon_name=anon_name)
+
+# 🌿 [오픈채팅] 4. 오픈채팅 메시지 전송 처리
+@app.route('/send_open_message/<int:room_id>', methods=['POST'])
+def send_open_message(room_id):
+    user = session.get('user')
+    if not user: return redirect(url_for('login'))
+    
+    message = request.form.get('message', '').strip()
+    anon_name = session.get(f'anon_name_{room_id}', '익명의 유저')
+    
+    if message:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO open_messages (room_id, sender_anon, message) 
+            VALUES (%s, %s, %s)
+        """, (room_id, anon_name, message))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+    return redirect(url_for('open_chat_room', room_id=room_id))
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
