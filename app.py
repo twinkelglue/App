@@ -562,7 +562,7 @@ def create_open_room():
     
     return redirect(url_for('open_chat_room', room_id=new_room_id))
 
-# [통합 완료] 특정 오픈채팅방 입장, 강퇴 차단, 부방장 확인 및 방장 실명 고정 로직 결합
+# [교정 완료] 방장도 닉네임 설정 가능 + 카톡 오픈채팅 권한 방식 적용
 @app.route('/open_chat/room/<int:room_id>', methods=['GET', 'POST'])
 def open_chat_room(room_id):
     user = session.get('user')
@@ -572,7 +572,7 @@ def open_chat_room(room_id):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 강퇴당한 유저인지 최우선 검사
+    # 1. 강퇴당한 유저인지 검사
     cur.execute("SELECT 1 FROM open_banned_users WHERE room_id = %s AND username = %s", (room_id, user))
     if cur.fetchone():
         cur.close()
@@ -587,15 +587,11 @@ def open_chat_room(room_id):
         conn.close()
         return "존재하지 않는 방입니다.", 404
         
-    # 3. 권한 설정 (본캐 ID 기준)
+    # 3. 권한 설정 (닉네임이 변경되어도 '본캐 로그인 ID' 기준으로 판별)
     is_host = (room['created_by'] == user)
     is_sub_host = (room['sub_host'] == user)
     
-    # 4. 방장 전용 실명 강제 고정 및 자동 세션 생성
-    if is_host:
-        session[f'anon_name_{room_id}'] = user
-
-    # 닉네임 설정을 위한 POST 처리
+    # 4. 닉네임 설정을 위한 POST 처리 (방장, 일반인 공통으로 원하는 닉네임 설정)
     if request.method == 'POST':
         custom_name = request.form.get('custom_name', '').strip()
         if custom_name:
@@ -606,13 +602,13 @@ def open_chat_room(room_id):
             
     anon_name = session.get(f'anon_name_{room_id}')
     
-    # 닉네임 세션이 설정되지 않은 일반 유저인 경우 닉네임 입력 창(템플릿) 반환
+    # 5. 닉네임 세션이 아직 없는 경우 닉네임 입력 창 표시 (최초 1회만)
     if not anon_name:
         cur.close()
         conn.close()
         return render_template('open_chat.html', room=room, anon_name=None)
     
-    # 5. 메시지 내역 불러오기 (강퇴 기능을 위한 sender_real_id 포함)
+    # 6. 메시지 내역 불러오기
     cur.execute("""
         SELECT id, sender_anon, sender_real_id, message, created_at 
         FROM open_messages 
