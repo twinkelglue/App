@@ -824,6 +824,49 @@ def delete_open_room(room_id):
         cur.close()
         conn.close()
         return "<script>alert('오픈채팅방이 성공적으로 삭제되었습니다.'); location.href='/open_chat_list';</script>"
+        # ----------------------------------------------------------------
+# 👑 [최고 관리자] 기존 대시보드 HTML 연동용 라우트 (안전 보완 버전)
+# ----------------------------------------------------------------
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    user = session.get('user')
+    if user != 'admin':
+        return "권한이 없습니다. 최고 관리자만 접근 가능합니다.", 403
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 1. 회원 테이블 조회 (users 또는 members 둘 다 대응)
+    all_users = []
+    for table in ['users', 'members']:
+        try:
+            cur.execute(f"SELECT username FROM {table} WHERE username != 'admin' ORDER BY username ASC")
+            all_users = cur.fetchall()
+            break
+        except:
+            conn.rollback()
+    
+    # 2. 일반 단톡방 조회 (테이블 없어도 에러 안 나게 방어)
+    group_rooms = []
+    try:
+        cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
+        group_rooms = cur.fetchall()
+    except:
+        conn.rollback()
+        
+    # 3. 오픈채팅방 조회 (테이블 없어도 에러 안 나게 방어)
+    open_rooms = []
+    try:
+        cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
+        open_rooms = cur.fetchall()
+    except:
+        conn.rollback()
+        
+    cur.close()
+    conn.close()
+    
+    # 이미 가지고 계신 HTML 파일에 데이터를 넘겨줍니다!
+    return render_template('admin_dashboard.html', all_users=all_users, group_rooms=group_rooms, open_rooms=open_rooms)
     else:
         cur.close()
         conn.close()
