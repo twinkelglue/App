@@ -274,6 +274,19 @@
             </a>
         </div>
     </div>
+    <!-- 🌿 익명 오픈채팅 스페이스 섹션 (이 코드가 들어가야 방을 만들 수 있습니다!) -->
+    <div class="section-title">🌿 익명 오픈채팅 스페이스</div>
+    <div class="list-container">
+        <div class="item-card" style="border: 1px solid #10b981; background: linear-gradient(135deg, #121620 0%, #061f14 100%); flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 14px; margin-bottom: 12px;">
+            <div class="item-info">
+                <div class="title" style="color: #34d399; font-size: 1.1rem; font-weight: 600;">실시간 익명 오픈채팅 광장</div>
+                <div class="subtitle" style="margin-top: 4px; color: #94a3b8; font-size: 0.85rem;">본캐를 숨기고 자유롭게 방을 만들거나 참여해보세요!</div>
+            </div>
+            <a href="{{ url_for('open_chat_list') }}" class="btn-gradient" style="background: linear-gradient(45deg, #10b981, #059669); width: 100%; box-sizing: border-box; text-align: center; padding: 12px; border-radius: 10px; color: white; text-decoration: none; font-weight: 700; display: block;">
+                오픈채팅방 전체 목록 / 방 만들기 🚀
+            </a>
+        </div>
+    </div>
     {% else %}
     <!-- 로그인 유도 화면 -->
     <div style="padding: 60px 20px; text-align: center;">
