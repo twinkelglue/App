@@ -563,7 +563,108 @@ def open_chat_list():
     conn.close()
     
     return render_template('open_room_list.html', rooms=rooms)
+# ==========================================
+# 565번 줄 바로 아래(566번 줄)에 붙여넣을 구간 시작
+# ==========================================
 
+@app.route('/open_chat/room/<int:room_id>', methods=['GET', 'POST'])
+def open_chat_room(room_id):
+    if not session.get('user'):
+        return redirect(url_for('login'))
+    
+    current_user = session.get('user')
+    
+    # DB 연결 (기존 코드 스타일 적용)
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+    
+    # 1. 방 정보 조회
+    cur.execute("SELECT * FROM open_rooms WHERE id = %s", (room_id,))
+    room = cur.fetchone()
+    
+    if not room:
+        cur.close()
+        conn.close()
+        return "존재하지 않는 방입니다.", 404
+        
+    # 방장 및 부방장 여부 판별 (방 개설자가 무조건 방장)
+    is_host = (current_user == room['created_by'])
+    is_sub_host = (current_user == room.get('sub_host'))
+    
+    # 닉네임 세션 처리
+    anon_name = session.get(f'anon_{room_id}')
+    
+    # 방장이면 닉네임 설정창 건너뛰고 본캐 ID로 강제 고정 및 자동 입장
+    if is_host:
+        anon_name = current_user
+        session[f'anon_{room_id}'] = anon_name
+
+    if request.method == 'POST':
+        if not anon_name:
+            custom_name = request.form.get('custom_name')
+            if custom_name:
+                anon_name = custom_name.strip()
+                session[f'anon_{room_id}'] = anon_name
+                cur.close()
+                conn.close()
+                return redirect(url_for('open_chat_room', room_id=room_id))
+
+    # 닉네임이 없으면 프로필 설정창으로 이동
+    if not anon_name:
+        cur.close()
+        conn.close()
+        return render_template('open_chat.html', room=room, anon_name=None)
+        
+    # 2. 대화 메시지 내역 가져오기
+    cur.execute("""
+        SELECT * FROM open_messages 
+        WHERE room_id = %s 
+        ORDER BY created_at ASC
+    """, (room_id,))
+    messages = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    return render_template(
+        'open_chat.html', 
+        room=room, 
+        messages=messages, 
+        anon_name=anon_name,
+        is_host=is_host,
+        is_sub_host=is_sub_host
+    )
+
+
+@app.route('/open_chat/room/<int:room_id>/send', methods=['POST'])
+def send_open_message(room_id):
+    if not session.get('user'):
+        return redirect(url_for('login'))
+        
+    current_user = session.get('user')
+    anon_name = session.get(f'anon_{room_id}')
+    message = request.form.get('message')
+    
+    if not anon_name or not message:
+        return redirect(url_for('open_chat_room', room_id=room_id))
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 메시지 저장 시 보낸 사람의 진짜 ID(current_user)를 함께 인서트
+    cur.execute(
+        "INSERT INTO open_messages (room_id, sender_anon, sender_real_id, message) VALUES (%s, %s, %s, %s)",
+        (room_id, anon_name, current_user, message)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    return redirect(url_for('open_chat_room', room_id=room_id))
+
+# ==========================================
+# 붙여넣을 구간 끝 (바로 아래에 567번 줄인 # 🌿 [오픈채팅] 2... 가 오면 됩니다)
+# ==========================================
 # 🌿 [오픈채팅] 2. 새로운 방 만들기 처리 (방장이 자동으로 본인이 됨)
 @app.route('/create_open_room', methods=['POST'])
 def create_open_room():
