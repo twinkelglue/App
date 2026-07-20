@@ -802,9 +802,9 @@ def admin_dashboard():
         cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
         my_rooms = cur.fetchall()
         
-        # 2. 전체 회원 상태 모니터링 (10분 이내 활동 시 온라인)
+        # 2. 전체 회원 상태 모니터링 (존재하지 않는 role 컬럼 제거)
         cur.execute("""
-            SELECT username, nickname, role,
+            SELECT username, nickname,
                    CASE WHEN last_seen >= NOW() - INTERVAL '10 minutes' THEN TRUE ELSE FALSE END as is_online
             FROM users
             WHERE is_active = TRUE
@@ -813,13 +813,12 @@ def admin_dashboard():
         all_users = cur.fetchall()
     except Exception as e:
         print(f"DB Error: {e}")
-        pass
         
     cur.close()
     conn.close()
     
-    # 🚨 중요: 기존 원래 코드 맨 밑에 있던 html 파일명과 똑같이 적어주세요! (예: admin.html 등)
-    return render_template('admin_dashboard html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
+    # 🚨 templates 폴더에 있는 실제 관리자 HTML 파일명으로 적어주세요 (예: admin.html)
+    return render_template('admin.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
