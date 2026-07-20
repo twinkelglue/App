@@ -526,18 +526,6 @@ def answer(msg_id):
         conn.close()
     return redirect(url_for('user_profile', username=user))
 
-@app.route('/delete_message/<int:msg_id>', methods=['POST'])
-def delete_message(msg_id):
-    user = session.get('user')
-    if user:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM ask_messages WHERE id = %s AND target_user = %s", (msg_id, user))
-        conn.commit()
-        cur.close()
-        conn.close()
-    return redirect(url_for('user_profile', username=user))
-
 @app.route('/follow/<username>', methods=['POST'])
 def follow(username):
     user = session.get('user')
