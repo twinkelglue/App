@@ -885,7 +885,59 @@ def delete_open_room(room_id):
         cur.close()
         conn.close()
         return "삭제 권한이 없습니다.", 403
-
+# 파일 맨 아래에 기존 내용을 지우지 말고 그냥 추가로 붙여넣으세요!
+@app.route('/')
+def chatclub_fixed_index():
+    user = session.get('user')
+    role = session.get('role', 'USER')
+    my_rooms = []
+    all_users = []
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if user:
+        # admin 500 에러 차단 분기문
+        if role in ['ADMIN', 'H_ADMIN'] or user == 'admin':
+            cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
+            my_rooms = cur.fetchall()
+            
+            cur.execute("""
+                SELECT username, nickname, role,
+                       CASE WHEN last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes' THEN TRUE ELSE FALSE END as is_online
+                FROM users
+                WHERE is_active = TRUE
+                ORDER BY is_online DESC, nickname ASC
+            """)
+            all_users = cur.fetchall()
+        else:
+            # 일반 유저는 정상 작동
+            try:
+                query_rooms = """
+                    SELECT DISTINCT cr.id, cr.room_name 
+                    FROM chat_rooms cr
+                    LEFT JOIN room_members rm ON cr.id = rm.room_id
+                    WHERE cr.created_by = %s OR rm.user_id = %s
+                    ORDER BY cr.id DESC
+                """
+                cur.execute(query_rooms, (user, user))
+                my_rooms = cur.fetchall()
+                
+                cur.execute("""
+                    SELECT u.username, u.nickname, u.role,
+                           CASE WHEN u.last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes' THEN TRUE ELSE FALSE END as is_online
+                    FROM users u
+                    JOIN follows f ON u.username = f.following
+                    WHERE f.follower = %s AND u.is_active = TRUE
+                    ORDER BY is_online DESC, u.nickname ASC
+                """, (user,))
+                all_users = cur.fetchall()
+            except:
+                pass
+        
+    cur.close()
+    conn.close()
+    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
