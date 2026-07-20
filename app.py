@@ -793,43 +793,46 @@ def open_chat_ban_user(room_id):
 # ----------------------------------------------------------------
 
 # [통합 및 보완 완료] 유저 전체 상세조회 및 안정적 결함 방지 반영 대시보드
+
 @app.route('/admin/dashboard')
-def admin_dashboard():
+def admin_dashboard_fixed():
     user = session.get('user')
-    if user != 'admin':
-        return "권한이 없습니다. 최고 관리자만 접근 가능합니다.", 403
+    role = session.get('role', 'USER')
+    
+    # 👑 최고관리자가 아니면 아예 접근을 못 하게 막아버리는 안전장치
+    if user != 'admin' and role not in ['ADMIN', 'H_ADMIN']:
+        return "관리자 권한이 없습니다.", 403
         
+    my_rooms = []
+    all_users = []
+    
     conn = get_db_connection()
     cur = conn.cursor()
     
-    all_users = []
-    group_rooms = []
-    open_rooms = []
-    
     try:
-        # 원래 기획에 상응하는 닉네임, 소개글, 활성화 여부 전체 복원 조회
-        cur.execute("SELECT username, nickname, bio, is_active FROM users WHERE username != 'admin' ORDER BY username ASC")
-        all_users = cur.fetchall()
-    except:
-        conn.rollback()
-    
-    try:
-        cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
-        group_rooms = cur.fetchall()
-    except:
-        conn.rollback()
+        # 1. 최고관리자 전용 전체 단톡방 조회 
+        cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
+        my_rooms = cur.fetchall()
         
-    try:
-        cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
-        open_rooms = cur.fetchall()
-    except:
-        conn.rollback()
+        # 2. 전체 회원 상태 모니터링 (10분 이내 활동 시 온라인)
+        cur.execute("""
+            SELECT username, nickname, role,
+                   CASE WHEN last_seen >= NOW() - INTERVAL '10 minutes' THEN TRUE ELSE FALSE END as is_online
+            FROM users
+            WHERE is_active = TRUE
+            ORDER BY is_online DESC, nickname ASC
+        """)
+        all_users = cur.fetchall()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        pass
         
     cur.close()
     conn.close()
     
-    return render_template('admin_dashboard.html', all_users=all_users, group_rooms=group_rooms, open_rooms=open_rooms)
-
+    # 관리자 대시보드 템플릿 파일명(보통 admin.html 또는 index.html)에 맞게 화면을 띄워줍니다.
+    # 기존 코드 맨 밑에 있던 render_template과 파일명을 똑같이 맞춰주시면 제일 좋습니다.
+    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
