@@ -146,6 +146,7 @@
 
             <!-- 말풍선 및 시간 -->
             <div class="bubble">{{ msg.message }}</div>
+            <button onclick="deleteMessage('open', '{{ msg.id }}')" style="background:none; border:none; cursor:pointer;">❌</button>
             <div class="time">
                 {% if msg.created_at %}{{ msg.created_at.strftime('%H:%M') }}{% endif %}
             </div>
