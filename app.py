@@ -886,7 +886,7 @@ def delete_open_room(room_id):
         conn.close()
         return "삭제 권한이 없습니다.", 403
 # 파일 맨 아래에 기존 내용을 지우지 말고 그냥 추가로 붙여넣으세요!
-@app.route('/admin_home')
+@app.route('/admin/dashboard')
 def chatclub_fixed_index():
     user = session.get('user')
     role = session.get('role', 'USER')
