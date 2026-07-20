@@ -781,13 +781,12 @@ def open_chat_ban_user(room_id):
 # ----------------------------------------------------------------
 
 # [통합 및 보완 완료] 유저 전체 상세조회 및 안정적 결함 방지 반영 대시보드
-
 @app.route('/admin/dashboard')
 def admin_dashboard():
     user = session.get('user')
     role = session.get('role', 'USER')
     
-    # 👑 최고관리자 검증 (admin이거나 진짜 ADMIN 역할일 때만 허용)
+    # 👑 최고관리자 검증 (admin이거나 ADMIN 역할일 때만 허용)
     if user != 'admin' and role not in ['ADMIN', 'H_ADMIN']:
         return "관리자 권한이 없습니다.", 403
         
@@ -798,26 +797,27 @@ def admin_dashboard():
     cur = conn.cursor()
     
     try:
-        # 1. 전체 단톡방 목록 조회
+        # 1. HTML의 {% for g in my_rooms %} 구조에 맞게 단톡방 조회
+        # 데이터 순서: g[0] = id, g[1] = room_name
         cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
         my_rooms = cur.fetchall()
         
-        # 2. 전체 회원 상태 모니터링 (존재하지 않는 role 컬럼 제거)
+        # 2. HTML의 {% for u in all_users %} 구조에 맞게 회원 조회 (role 컬럼 제거)
+        # 데이터 순서: u[0] = username, u[1] = nickname, u[2] = bio, u[3] = is_active
         cur.execute("""
-            SELECT username, nickname,
-                   CASE WHEN last_seen >= NOW() - INTERVAL '10 minutes' THEN TRUE ELSE FALSE END as is_online
-            FROM users
-            WHERE is_active = TRUE
-            ORDER BY is_online DESC, nickname ASC
+            SELECT username, nickname, bio, is_active 
+            FROM users 
+            ORDER BY username ASC
         """)
         all_users = cur.fetchall()
+        
     except Exception as e:
         print(f"DB Error: {e}")
+        pass
         
     cur.close()
     conn.close()
     
-    # 🚨 templates 폴더에 있는 실제 관리자 HTML 파일명으로 적어주세요 (예: admin.html)
     return render_template('admin_dashboard.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
