@@ -417,7 +417,35 @@ def search():
         cur.close()
         conn.close()
     return render_template('search_results.html', query=query, results=results)
-
+@app.route('/my_chats')
+def my_joined_rooms():
+    current_user_id = session.get('user_id')
+    
+    if not current_user_id:
+        flash("로그인이 필요한 서비스입니다.")
+        return redirect('/login')
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # 💡 핵심 SQL: 내가 참여(room_members)한 방들의 상세 정보(chat_rooms)를 결합해서 가져옵니다.
+    # 방장 ID(creator_id)도 같이 가져와서 내가 방장인 방은 따로 표시할 수 있게 합니다.
+    cur.execute("""
+        SELECT r.id, r.title, r.creator_id, 
+               (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) as member_count
+        FROM chat_rooms r
+        JOIN room_members m ON r.id = m.room_id
+        WHERE m.user_id = %s
+        ORDER BY r.id DESC
+    """, (current_user_id,))
+    
+    my_rooms = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    # 내일 완성할 HTML 파일로 데이터를 넘겨줍니다.
+    return render_template('my_chats.html', rooms=my_rooms, current_user_id=int(current_user_id))
 @app.route('/user/<username>')
 def user_profile(username):
     conn = get_db_connection()
