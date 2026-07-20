@@ -141,7 +141,8 @@ init_db()
 @app.before_request
 def update_last_seen():
     user = session.get('user')
-    if user:
+    role = session.get('role', 'USER')
+    if user and role not in ['ADMIN', 'H_ADMIN'] and user != 'admin':
         try:
             conn = get_db_connection()
             cur = conn.cursor()
