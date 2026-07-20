@@ -818,7 +818,7 @@ def admin_dashboard():
     conn.close()
     
     # 🚨 templates 폴더에 있는 실제 관리자 HTML 파일명으로 적어주세요 (예: admin.html)
-    return render_template('admin.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
+    return render_template('admin_dashboard.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
