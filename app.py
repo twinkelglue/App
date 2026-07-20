@@ -890,7 +890,7 @@ def delete_open_room(room_id):
 # 파일 맨 아래에 기존 내용을 지우지 말고 그냥 추가로 붙여넣으세요!
 from flask import jsonify, session
 
-@app.route('/delete_message/<string:chat_type>/<int:message_id>', methods=['POST'])
+@app.route('/delete_chat_message/<string:chat_type>/<int:message_id>', methods=['POST'])
 def delete_message(chat_type, message_id):
     user = session.get('user')
     
