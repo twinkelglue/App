@@ -781,44 +781,17 @@ def open_chat_ban_user(room_id):
 # ----------------------------------------------------------------
 
 # [통합 및 보완 완료] 유저 전체 상세조회 및 안정적 결함 방지 반영 대시보드
+# ---------------- 여기서부터 선택해서 삭제 ----------------
 @app.route('/admin/dashboard')
 def admin_dashboard():
-    user = session.get('user')
-    role = session.get('role', 'USER')
-    
-    # 👑 최고관리자 검증 (admin이거나 ADMIN 역할일 때만 허용)
-    if user != 'admin' and role not in ['ADMIN', 'H_ADMIN']:
-        return "관리자 권한이 없습니다.", 403
-        
-    my_rooms = []
-    all_users = []
-    
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    try:
-        # 1. HTML의 {% for g in my_rooms %} 구조에 맞게 단톡방 조회
-        # 데이터 순서: g[0] = id, g[1] = room_name
-        cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
-        my_rooms = cur.fetchall()
-        
-        # 2. HTML의 {% for u in all_users %} 구조에 맞게 회원 조회 (role 컬럼 제거)
-        # 데이터 순서: u[0] = username, u[1] = nickname, u[2] = bio, u[3] = is_active
-        cur.execute("""
-            SELECT username, nickname, bio, is_active 
-            FROM users 
-            ORDER BY username ASC
-        """)
-        all_users = cur.fetchall()
-        
-    except Exception as e:
-        print(f"DB Error: {e}")
-        pass
-        
-    cur.close()
-    conn.close()
-    
-    return render_template('admin_dashboard.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
+    ... (중간 코드들) ...
+    return render_template('admin_dashboard.html', ...)
+
+@app.route('/admin/ban_user/<username>', methods=['POST'])
+def admin_ban_user(username):
+    ... (중간 코드들) ...
+    return "<script>alert(...);</script>"
+# ---------------- 여기까지 싹 지우기 ----------------
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
