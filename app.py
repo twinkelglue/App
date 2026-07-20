@@ -888,7 +888,71 @@ def delete_open_room(room_id):
         conn.close()
         return "삭제 권한이 없습니다.", 403
 # 파일 맨 아래에 기존 내용을 지우지 말고 그냥 추가로 붙여넣으세요!
+from flask import jsonify
 
+@app.route('/delete_message/<int:message_id>', methods=['POST'])
+def delete_message(message_id):
+    user = session.get('user')
+    
+    if not user:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # 1. 지우려는 메시지의 작성자와 해당 방 번호(room_id) 조회
+        cur.execute("""
+            SELECT sender_real_id, room_id 
+            FROM open_messages 
+            WHERE id = %s
+        """, (message_id,))
+        msg = cur.fetchone()
+        
+        if not msg:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "존재하지 않는 메시지입니다."}), 404
+            
+        # 튜플이나 딕셔너리 형태 모두 대응할 수 있게 처리
+        msg_sender = msg['sender_real_id'] if isinstance(msg, dict) else msg[0]
+        room_id = msg['room_id'] if isinstance(msg, dict) else msg[1]
+        
+        # 2. 해당 방의 방장(created_by) 조회
+        cur.execute("""
+            SELECT created_by 
+            FROM chat_rooms 
+            WHERE id = %s
+        """, (room_id,))
+        room = cur.fetchone()
+        
+        room_owner = room['created_by'] if isinstance(room, dict) else (room[0] if room else None)
+
+        # 👑 3. 권한 체크 (부방장 기능은 추후 DB 테이블 컬럼에 따라 확장 가능)
+        is_allowed = False
+        
+        if user == 'admin':                     # 최고관리자 프리패스
+            is_allowed = True
+        elif user == room_owner:                # 오픈챗 방장 프리패스
+            is_allowed = True
+        elif user == msg_sender:                # 일반 유저 본인 글 삭제
+            is_allowed = True
+            
+        # 4. 권한 통과 시 삭제 진행
+        if is_allowed:
+            cur.execute("DELETE FROM open_messages WHERE id = %s", (message_id,))
+            conn.commit()
+            response = {"success": True, "message": "메시지가 삭제되었습니다."}
+        else:
+            response = {"success": False, "message": "삭제 권한이 없습니다."}
+            
+    except Exception as e:
+        print(f"Delete Error: {e}")
+        response = {"success": False, "message": "서버 오류가 발생했습니다."}
+        
+    cur.close()
+    conn.close()
+    return jsonify(response)
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
