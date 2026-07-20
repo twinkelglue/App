@@ -795,11 +795,11 @@ def open_chat_ban_user(room_id):
 # [통합 및 보완 완료] 유저 전체 상세조회 및 안정적 결함 방지 반영 대시보드
 
 @app.route('/admin/dashboard')
-def admin_dashboard_fixed():
+def admin_dashboard():
     user = session.get('user')
     role = session.get('role', 'USER')
     
-    # 👑 최고관리자가 아니면 아예 접근을 못 하게 막아버리는 안전장치
+    # 👑 최고관리자 검증 (admin이거나 진짜 ADMIN 역할일 때만 허용)
     if user != 'admin' and role not in ['ADMIN', 'H_ADMIN']:
         return "관리자 권한이 없습니다.", 403
         
@@ -810,7 +810,7 @@ def admin_dashboard_fixed():
     cur = conn.cursor()
     
     try:
-        # 1. 최고관리자 전용 전체 단톡방 조회 
+        # 1. 전체 단톡방 목록 조회
         cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
         my_rooms = cur.fetchall()
         
@@ -830,9 +830,8 @@ def admin_dashboard_fixed():
     cur.close()
     conn.close()
     
-    # 관리자 대시보드 템플릿 파일명(보통 admin.html 또는 index.html)에 맞게 화면을 띄워줍니다.
-    # 기존 코드 맨 밑에 있던 render_template과 파일명을 똑같이 맞춰주시면 제일 좋습니다.
-    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
+    # 🚨 중요: 기존 원래 코드 맨 밑에 있던 html 파일명과 똑같이 적어주세요! (예: admin.html 등)
+    return render_template('admin.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
