@@ -106,6 +106,7 @@
                 {% if msg.sender == session['user'] %}
                     <div class="msg-wrapper me">
                         <div class="msg-bubble">{{ msg.message }}</div>
+                        <button onclick="deleteMessage('general', '{{ msg.id }}')" style="background:none; border:none; cursor:pointer;">❌</button>
                         <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
                     </div>
                 {% else %}
@@ -113,6 +114,7 @@
                         <!-- 단톡방이므로 보낸 사람의 닉네임 유저 표시 추가 -->
                         <div class="msg-sender">@{{ msg.sender }}</div>
                         <div class="msg-bubble">{{ msg.message }}</div>
+                        <button onclick="deleteMessage('general', '{{ msg.id }}')" style="background:none; border:none; cursor:pointer;">❌</button>
                         <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
                     </div>
                 {% endif %}
@@ -133,6 +135,14 @@
 <script>
     const chatBox = document.getElementById('chatMessages');
     chatBox.scrollTop = chatBox.scrollHeight;
+    <script>
+function deleteMessage(chatType, messageId) {
+    if (!confirm("정말 이 메시지를 삭제하시겠습니까?")) return;
+    fetch(`/delete_message/${chatType}/${messageId}`, { method: 'POST' })
+    .then(res => res.json())
+    .then(data => { alert(data.message); if (data.success) location.reload(); });
+}
+</script>
 </script>
 
 </body>
