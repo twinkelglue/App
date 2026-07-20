@@ -831,7 +831,7 @@ def admin_dashboard():
     conn.close()
     
     # 🚨 중요: 기존 원래 코드 맨 밑에 있던 html 파일명과 똑같이 적어주세요! (예: admin.html 등)
-    return render_template('admin.html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
+    return render_template('admin_dashboard html', my_rooms=my_rooms, all_users=all_users, user=user, role=role)
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
