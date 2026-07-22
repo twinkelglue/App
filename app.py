@@ -779,6 +779,8 @@ def open_chat_ban_user(room_id):
 # ----------------------------------------------------------------
 # 👑 [최고 관리자 MASTER PANEL] 전용 백엔드 기능 
 # ----------------------------------------------------------------
+import traceback
+
 @app.route('/admin/dashboard')
 def admin_dashboard():
     user = session.get('user')
@@ -794,43 +796,49 @@ def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
     
+    # 1. 회원 목록 조회
     try:
-        # 1. 회원 조회 (가장 확실한 기본 컬럼들만 조회)
         cur.execute("SELECT username, nickname FROM users ORDER BY username ASC")
-        user_rows = cur.fetchall()
-        all_users = [
-            {
+        for r in cur.fetchall():
+            all_users.append({
                 'username': r[0],
                 'nickname': r[1],
                 'bio': '',
-                'is_active': True  # DB에 is_active 컬럼이 없어도 에러 안 나게 기본 True(정상활동중)로 처리
-            } for r in user_rows
-        ]
-        
-        # 2. 오픈채팅방 조회
-        try:
-            cur.execute("SELECT id, title FROM open_chat_rooms ORDER BY id DESC")
-            open_rows = cur.fetchall()
-            open_rooms = [{'id': r[0], 'title': r[1], 'created_by': 'admin'} for r in open_rows]
-        except Exception as e1:
-            print(f"Open Chat Error: {e1}")
-            conn.rollback() # 에러 시 트랜잭션 복구
-        
-        # 3. 비밀 단톡방 조회
-        try:
-            cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
-            group_rows = cur.fetchall()
-            group_rooms = [{'id': r[0], 'room_name': r[1], 'created_by': 'admin'} for r in group_rows]
-        except Exception as e2:
-            print(f"Group Chat Error: {e2}")
-            conn.rollback()
-        
+                'is_active': True
+            })
     except Exception as e:
-        print(f"DB Error: {e}")
+        conn.rollback()
+        print(f"=== [USER ERROR] ===: {e}")
+        traceback.print_exc()
+
+    # 2. 오픈채팅방 조회
+    try:
+        cur.execute("SELECT id, title FROM open_chat_rooms ORDER BY id DESC")
+        for r in cur.fetchall():
+            open_rooms.append({
+                'id': r[0],
+                'title': r[1],
+                'created_by': 'admin'
+            })
+    except Exception as e:
+        conn.rollback()
+        print(f"=== [OPEN ROOM ERROR] ===: {e}")
+
+    # 3. 비밀 단톡방 조회
+    try:
+        cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
+        for r in cur.fetchall():
+            group_rooms.append({
+                'id': r[0],
+                'room_name': r[1],
+                'created_by': 'admin'
+            })
+    except Exception as e:
+        conn.rollback()
+        print(f"=== [GROUP ROOM ERROR] ===: {e}")
         
-    finally:
-        cur.close()
-        conn.close()
+    cur.close()
+    conn.close()
     
     return render_template('admin_dashboard.html', 
                            all_users=all_users, 
