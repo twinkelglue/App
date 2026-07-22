@@ -38,20 +38,19 @@
         <tbody>
             {% for u in all_users %}
             <tr>
-                <!-- u[0]=username, u[1]=nickname, u[2]=bio, u[3]=is_active 순서 매칭 -->
-                <td><strong>@{{ u[0] }}</strong></td>
-                <td>{{ u[1] }}</td>
-                <td>{{ u[2] if u[2] else '' }}</td>
+                <td><strong>@{{ u.username }}</strong></td>
+                <td>{{ u.nickname }}</td>
+                <td>{{ u.bio if u.bio else '' }}</td>
                 <td>
-                    {% if u[3] %}
+                    {% if u.is_active %}
                         <span class="status-active">정상 활동중</span>
                     {% else %}
                         <span class="status-banned">차단됨(탈퇴)</span>
                     {% endif %}
                 </td>
                 <td>
-                    {% if u[3] %}
-                    <form action="/admin/ban_user/{{ u[0] }}" method="POST" onsubmit="return confirm('이 유저를 정말 서비스에서 영구 추방하시겠습니까? 로그인과 모든 활동이 차단됩니다.');">
+                    {% if u.is_active %}
+                    <form action="/admin/ban_user/{{ u.username }}" method="POST" onsubmit="return confirm('이 유저를 정말 서비스에서 영구 추방하시겠습니까?');">
                         <button type="submit" class="btn-danger">🚫 즉시 차단</button>
                     </form>
                     {% else %}
@@ -63,27 +62,43 @@
         </tbody>
     </table>
 
-    <!-- 2. 모든 일반 단톡방 관리 섹션 -->
+    <!-- 2. 모든 오픈채팅방 관리 섹션 -->
+    <h2>💬 전체 오픈채팅방 리스트</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>방 ID</th>
+                <th>오픈챗방 이름</th>
+                <th>개설자(방장)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in open_rooms %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td><strong>{{ r.title }}</strong></td>
+                <td>@{{ r.created_by }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 3. 모든 일반 단톡방 관리 섹션 -->
     <h2>👥 전체 일반 비밀 단톡방 리스트</h2>
     <table>
         <thead>
             <tr>
                 <th>방 ID</th>
                 <th>단톡방 이름</th>
-                <th>관리 조치</th>
+                <th>생성자</th>
             </tr>
         </thead>
         <tbody>
-            {% for g in my_rooms %}
+            {% for g in group_rooms %}
             <tr>
-                <!-- g[0]=id, g[1]=room_name 순서 매칭 -->
-                <td>{{ g[0] }}</td>
-                <td>{{ g[1] }}</td>
-                <td>
-                    <form action="/admin/delete_group/{{ g[0] }}" method="POST" onsubmit="return confirm('이 비밀 단톡방을 강제 삭제하시겠습니까?');">
-                        <button type="submit" class="btn-danger">🗑️ 방 강제 삭제</button>
-                    </form>
-                </td>
+                <td>{{ g.id }}</td>
+                <td>{{ g.room_name }}</td>
+                <td>@{{ g.created_by }}</td>
             </tr>
             {% endfor %}
         </tbody>
