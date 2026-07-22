@@ -165,11 +165,47 @@
     </script>
 {% endif %}
 <script>
-function deleteMessage(chatType, messageId) {
-    if (!confirm("정말 이 메시지를 삭제하시겠습니까?")) return;
-    fetch(`/delete_chat_message/${chatType}/${messageId}`, { method: 'POST' })
-    .then(res => res.json())
-    .then(data => { alert(data.message); if (data.success) location.reload(); });
+let pressTimer;
+
+document.querySelectorAll('.message-item').forEach(msgElement => {
+    const startPress = (e) => {
+        if (!msgElement.classList.contains('my-message')) return;
+        pressTimer = window.setTimeout(() => { showDeleteConfirm(msgElement); }, 600);
+    };
+
+    const cancelPress = () => { clearTimeout(pressTimer); };
+
+    msgElement.addEventListener('touchstart', startPress);
+    msgElement.addEventListener('touchend', cancelPress);
+    msgElement.addEventListener('touchmove', cancelPress);
+    msgElement.addEventListener('mousedown', startPress);
+    msgElement.addEventListener('mouseup', cancelPress);
+    msgElement.addEventListener('mouseleave', cancelPress);
+    
+    msgElement.addEventListener('contextmenu', (e) => {
+        if (msgElement.classList.contains('my-message')) {
+            e.preventDefault();
+            showDeleteConfirm(msgElement);
+        }
+    });
+});
+
+function showDeleteConfirm(element) {
+    const messageId = element.dataset.messageId;
+    if (confirm("이 메시지를 삭제하시겠습니까?")) {
+        fetch(`/delete_message/${messageId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                element.remove();
+            } else {
+                alert("메시지 삭제 실패: " + data.message);
+            }
+        });
+    }
 }
 </script>
 </body>
