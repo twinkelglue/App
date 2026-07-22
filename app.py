@@ -784,7 +784,6 @@ def admin_dashboard():
     user = session.get('user')
     role = session.get('role', 'USER')
     
-    # 👑 최고관리자 검증 (admin이거나 진짜 ADMIN 역할일 때만 허용)
     if user != 'admin' and role not in ['ADMIN', 'H_ADMIN']:
         return "관리자 권한이 없습니다.", 403
         
@@ -796,43 +795,17 @@ def admin_dashboard():
     cur = conn.cursor()
     
     try:
-        # 1. 회원 데이터 전체 조회 (HTML의 u.username, u.nickname, u.bio, u.is_active 명칭에 맞게 딕셔너리로 포장)
-        cur.execute("""
-            SELECT username, nickname, bio, is_active 
-            FROM users 
-            ORDER BY username ASC
-        """)
-        user_rows = cur.fetchall()
-        all_users = [
-            {
-                'username': row[0],
-                'nickname': row[1],
-                'bio': row[2],
-                'is_active': row[3]
-            } for row in user_rows
-        ]
+        # 1. 회원 목록 (HTML의 u.username, u.is_active 등에 100% 매칭)
+        cur.execute("SELECT username, nickname, bio, is_active FROM users ORDER BY username ASC")
+        all_users = [{'username': r[0], 'nickname': r[1], 'bio': r[2], 'is_active': r[3]} for r in cur.fetchall()]
         
-        # 2. 오픈채팅방 리스트 조회 (HTML의 {% for r in open_rooms %} 구조와 r.id, r.title, r.created_by 매칭)
+        # 2. 오픈채팅방 목록
         cur.execute("SELECT id, title, created_by FROM open_chat_rooms ORDER BY id DESC")
-        open_rows = cur.fetchall()
-        open_rooms = [
-            {
-                'id': row[0],
-                'title': row[1],
-                'created_by': row[2]
-            } for row in open_rows
-        ]
+        open_rooms = [{'id': r[0], 'title': r[1], 'created_by': r[2]} for r in cur.fetchall()]
         
-        # 3. 일반 단톡방 리스트 조회 (HTML의 {% for g in group_rooms %} 구조와 g.id, g.room_name, g.created_by 매칭)
+        # 3. 비밀 단톡방 목록
         cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
-        group_rows = cur.fetchall()
-        group_rooms = [
-            {
-                'id': row[0],
-                'room_name': row[1],
-                'created_by': row[2]
-            } for row in group_rows
-        ]
+        group_rooms = [{'id': r[0], 'room_name': r[1], 'created_by': r[2]} for r in cur.fetchall()]
         
     except Exception as e:
         print(f"DB Error: {e}")
@@ -841,7 +814,6 @@ def admin_dashboard():
     cur.close()
     conn.close()
     
-    # HTML 템플릿 파일이 애타게 찾던 그 변수명 그대로 정확하게 배달합니다.
     return render_template('admin_dashboard.html', 
                            all_users=all_users, 
                            open_rooms=open_rooms, 
