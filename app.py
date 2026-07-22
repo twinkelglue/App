@@ -779,8 +779,6 @@ def open_chat_ban_user(room_id):
 # ----------------------------------------------------------------
 # 👑 [최고 관리자 MASTER PANEL] 전용 백엔드 기능 
 # ----------------------------------------------------------------
-import traceback
-
 @app.route('/admin/dashboard')
 def admin_dashboard():
     user = session.get('user')
@@ -796,46 +794,41 @@ def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 회원 목록 조회
+    # 1. 회원 목록 조회 (딕셔너리/튜플 형태 둘 다 안전하게 대응)
     try:
         cur.execute("SELECT username, nickname FROM users ORDER BY username ASC")
-        for r in cur.fetchall():
+        rows = cur.fetchall()
+        for r in rows:
+            # 딕셔너리 형태일 때와 튜플 형태일 때를 모두 방어
+            u_name = r.get('username') if isinstance(r, dict) else r[0]
+            n_name = r.get('nickname') if isinstance(r, dict) else r[1]
+            
             all_users.append({
-                'username': r[0],
-                'nickname': r[1],
+                'username': u_name,
+                'nickname': n_name,
                 'bio': '',
                 'is_active': True
             })
     except Exception as e:
         conn.rollback()
-        print(f"=== [USER ERROR] ===: {e}")
-        traceback.print_exc()
+        print(f"User Error: {e}")
 
-    # 2. 오픈채팅방 조회
-    try:
-        cur.execute("SELECT id, title FROM open_chat_rooms ORDER BY id DESC")
-        for r in cur.fetchall():
-            open_rooms.append({
-                'id': r[0],
-                'title': r[1],
-                'created_by': 'admin'
-            })
-    except Exception as e:
-        conn.rollback()
-        print(f"=== [OPEN ROOM ERROR] ===: {e}")
-
-    # 3. 비밀 단톡방 조회
+    # 2. 비밀 단톡방 조회 (실제 있는 chat_rooms 테이블 조회)
     try:
         cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
-        for r in cur.fetchall():
+        rows = cur.fetchall()
+        for r in rows:
+            r_id = r.get('id') if isinstance(r, dict) else r[0]
+            r_name = r.get('room_name') if isinstance(r, dict) else r[1]
+            
             group_rooms.append({
-                'id': r[0],
-                'room_name': r[1],
+                'id': r_id,
+                'room_name': r_name,
                 'created_by': 'admin'
             })
     except Exception as e:
         conn.rollback()
-        print(f"=== [GROUP ROOM ERROR] ===: {e}")
+        print(f"Group Room Error: {e}")
         
     cur.close()
     conn.close()
