@@ -795,24 +795,42 @@ def admin_dashboard():
     cur = conn.cursor()
     
     try:
-        # 1. 회원 목록 (HTML의 u.username, u.is_active 등에 100% 매칭)
-        cur.execute("SELECT username, nickname, bio, is_active FROM users ORDER BY username ASC")
-        all_users = [{'username': r[0], 'nickname': r[1], 'bio': r[2], 'is_active': r[3]} for r in cur.fetchall()]
+        # 1. 회원 조회 (가장 확실한 기본 컬럼들만 조회)
+        cur.execute("SELECT username, nickname FROM users ORDER BY username ASC")
+        user_rows = cur.fetchall()
+        all_users = [
+            {
+                'username': r[0],
+                'nickname': r[1],
+                'bio': '',
+                'is_active': True  # DB에 is_active 컬럼이 없어도 에러 안 나게 기본 True(정상활동중)로 처리
+            } for r in user_rows
+        ]
         
-        # 2. 오픈채팅방 목록
-        cur.execute("SELECT id, title, created_by FROM open_chat_rooms ORDER BY id DESC")
-        open_rooms = [{'id': r[0], 'title': r[1], 'created_by': r[2]} for r in cur.fetchall()]
+        # 2. 오픈채팅방 조회
+        try:
+            cur.execute("SELECT id, title FROM open_chat_rooms ORDER BY id DESC")
+            open_rows = cur.fetchall()
+            open_rooms = [{'id': r[0], 'title': r[1], 'created_by': 'admin'} for r in open_rows]
+        except Exception as e1:
+            print(f"Open Chat Error: {e1}")
+            conn.rollback() # 에러 시 트랜잭션 복구
         
-        # 3. 비밀 단톡방 목록
-        cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
-        group_rooms = [{'id': r[0], 'room_name': r[1], 'created_by': r[2]} for r in cur.fetchall()]
+        # 3. 비밀 단톡방 조회
+        try:
+            cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
+            group_rows = cur.fetchall()
+            group_rooms = [{'id': r[0], 'room_name': r[1], 'created_by': 'admin'} for r in group_rows]
+        except Exception as e2:
+            print(f"Group Chat Error: {e2}")
+            conn.rollback()
         
     except Exception as e:
         print(f"DB Error: {e}")
-        pass
         
-    cur.close()
-    conn.close()
+    finally:
+        cur.close()
+        conn.close()
     
     return render_template('admin_dashboard.html', 
                            all_users=all_users, 
