@@ -230,9 +230,9 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username').strip()
-        password = request.form.get('password')
-        nickname = request.form.get('nickname').strip()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        nickname = request.form.get('nickname', '').strip()
         
         if not username or not password or not nickname:
             return "모든 필드를 입력해주세요.", 400
@@ -241,11 +241,14 @@ def register():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        cur.execute("SELECT is_active FROM users WHERE username = %s", (username,))
+        # 아이디 존재 여부 확인 (탈퇴 여부 포함)
+        cur.execute("SELECT username, is_active FROM users WHERE username = %s", (username,))
         existing = cur.fetchone()
         
         if existing:
-            if not existing['is_active']:
+            is_active = existing.get('is_active') if isinstance(existing, dict) else existing[1]
+            if not is_active:
+                # 비활성화(탈퇴)된 계정인 경우 계정 재활성화 및 정보 갱신
                 cur.execute("""
                     UPDATE users 
                     SET password = %s, nickname = %s, bio = '안녕하세요! ChatClub입니다.', profile_img = 'default.png', is_active = TRUE 
@@ -255,26 +258,30 @@ def register():
                 cur.close()
                 conn.close()
                 session['user'] = username
+                session['role'] = 'USER'
                 return redirect(url_for('index'))
             else:
                 cur.close()
                 conn.close()
-                return "이미 존재하는 아이디입니다.", 400
+                return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
         
+        # 신규 회원가입
         cur.execute("INSERT INTO users (username, password, nickname) VALUES (%s, %s, %s)", (username, hashed_password, nickname))
         conn.commit()
         cur.close()
         conn.close()
         session['user'] = username
+        session['role'] = 'USER'
         return redirect(url_for('index'))
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username').strip()
-        password = request.form.get('password')
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
         
+        # 관리자 계정 직접 로그인 처리
         if username == 'admin' and password == 'admin1234':
             session['user'] = 'admin'
             session['role'] = 'ADMIN'
@@ -287,12 +294,17 @@ def login():
         cur.close()
         conn.close()
         
-        if user and check_password_hash(user['password'], password):
-            session['user'] = user['username']
-            session['role'] = 'USER'
-            return redirect(url_for('index'))
-        else:
-            return "아이디 또는 비밀번호가 잘못되었거나 탈퇴한 회원입니다.", 401
+        if user:
+            db_password = user.get('password') if isinstance(user, dict) else user[1]
+            db_username = user.get('username') if isinstance(user, dict) else user[0]
+            
+            # 1) 해시 비밀번호 검증시도 OR 2) 기존 평문 비밀번호 호환 검증
+            if check_password_hash(db_password, password) or db_password == password:
+                session['user'] = db_username
+                session['role'] = 'USER'
+                return redirect(url_for('index'))
+                
+        return "<script>alert('아이디 또는 비밀번호가 잘못되었거나 탈퇴한 회원입니다.'); history.back();</script>", 401
     return render_template('login.html')
 
 @app.route('/logout')
