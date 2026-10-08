@@ -157,54 +157,76 @@ def index():
     cur = conn.cursor()
     
     if user:
-        query_rooms = """
-            SELECT DISTINCT cr.id, cr.room_name 
-            FROM chat_rooms cr
-            LEFT JOIN room_members rm ON cr.id = rm.room_id
-            WHERE cr.created_by = %s OR rm.user_id = %s
-            ORDER BY cr.id DESC
-        """
-        cur.execute(query_rooms, (user, user))
-        my_rooms = cur.fetchall()
-        
-        cur.execute("""
-            SELECT u.username, u.nickname,
-                   CASE WHEN u.last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes' THEN TRUE ELSE FALSE END as is_online
-            FROM users u
-            JOIN follows f ON u.username = f.following
-            WHERE f.follower = %s AND u.is_active = TRUE
-            ORDER BY is_online DESC, u.nickname ASC
-        """, (user,))
-        all_users = cur.fetchall()
+        # 1. 내가 속한 단톡방 목록
+        try:
+            query_rooms = """
+                SELECT DISTINCT cr.id, cr.room_name 
+                FROM chat_rooms cr
+                LEFT JOIN room_members rm ON cr.id = rm.room_id
+                WHERE cr.created_by = %s OR rm.user_id = %s
+                ORDER BY cr.id DESC
+            """
+            cur.execute(query_rooms, (user, user))
+            my_rooms = cur.fetchall()
+        except Exception as e:
+            conn.rollback()
+            print(f"Group Room Query Error: {e}")
 
-        cur.execute("""
-            SELECT 
-                partner.username,
-                partner.nickname,
-                f.column_id IS NOT NULL AS is_following,
-                COUNT(dm.id) FILTER (WHERE dm.receiver = %s AND dm.is_read = FALSE) AS unread_count,
-                MAX(dm.created_at) AS last_msg_time
-            FROM (
-                SELECT sender AS partner_id FROM direct_messages WHERE receiver = %s
-                UNION
-                SELECT receiver AS partner_id FROM direct_messages WHERE sender = %s
-            ) sub
-            JOIN users partner ON partner.username = sub.partner_id AND partner.is_active = TRUE
-            LEFT JOIN direct_messages dm 
-                   ON (dm.sender = partner.username AND dm.receiver = %s) 
-                   OR (dm.sender = %s AND dm.receiver = partner.username)
-            LEFT JOIN follows f ON f.follower = %s AND f.following = partner.username
-            GROUP BY partner.username, partner.nickname, f.column_id
-            ORDER BY unread_count DESC, last_msg_time DESC;
-        """, (user, user, user, user, user, user))
-        dm_list = cur.fetchall()
+        # 2. 내 팔로잉 목록
+        try:
+            cur.execute("""
+                SELECT u.username, u.nickname,
+                       CASE WHEN u.last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes' THEN TRUE ELSE FALSE END as is_online
+                FROM users u
+                JOIN follows f ON u.username = f.following
+                WHERE f.follower = %s AND u.is_active = TRUE
+                ORDER BY is_online DESC, u.nickname ASC
+            """, (user,))
+            all_users = cur.fetchall()
+        except Exception as e:
+            conn.rollback()
+            print(f"Follow List Query Error: {e}")
 
-        unread_total = sum(item['unread_count'] for item in dm_list)
+        # 3. 1:1 대화방 & 안 읽은 메세지 목록 (에러 방지 쿼리)
+        try:
+            cur.execute("""
+                SELECT 
+                    partner.username,
+                    partner.nickname,
+                    CASE WHEN f.column_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_following,
+                    COALESCE(SUM(CASE WHEN dm.receiver = %s AND dm.is_read = FALSE THEN 1 ELSE 0 END), 0) AS unread_count,
+                    MAX(dm.created_at) AS last_msg_time
+                FROM (
+                    SELECT sender AS partner_id FROM direct_messages WHERE receiver = %s
+                    UNION
+                    SELECT receiver AS partner_id FROM direct_messages WHERE sender = %s
+                ) sub
+                JOIN users partner ON partner.username = sub.partner_id AND partner.is_active = TRUE
+                LEFT JOIN direct_messages dm 
+                       ON (dm.sender = partner.username AND dm.receiver = %s) 
+                       OR (dm.sender = %s AND dm.receiver = partner.username)
+                LEFT JOIN follows f ON f.follower = %s AND f.following = partner.username
+                GROUP BY partner.username, partner.nickname, f.column_id
+                ORDER BY unread_count DESC, last_msg_time DESC;
+            """, (user, user, user, user, user, user))
+            dm_list = cur.fetchall()
+
+            for item in dm_list:
+                count = item.get('unread_count', 0) if isinstance(item, dict) else item[3]
+                unread_total += int(count or 0)
+        except Exception as e:
+            conn.rollback()
+            print(f"DM Query Error: {e}")
         
     cur.close()
     conn.close()
-    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, dm_list=dm_list, unread_total=unread_total, user=user)
-
+    
+    return render_template('index.html', 
+                           my_rooms=my_rooms, 
+                           all_users=all_users, 
+                           dm_list=dm_list, 
+                           unread_total=unread_total, 
+                           user=user)
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
