@@ -3,286 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatClub Hub</title>
+    <title>ChatClub - 메인</title>
     <style>
-        :root {
-            --bg-color: #05070a;
-            --card-bg: #121620;
-            --text-color: #ffffff;
-            --text-muted: #94a3b8;
-            --gradient-instagram: linear-gradient(45deg, #00c6ff, #0072ff, #00f260); /* 청량한 파랑-초록 그라데이션 */
-            --border-color: #1e293b;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 500px;
-            min-height: 100vh;
-            background-color: var(--bg-color);
-            border-left: 1px solid var(--border-color);
-            border-right: 1px solid var(--border-color);
-            box-sizing: border-box;
-            padding-bottom: 60px;
-        }
-
-        /* 상단 헤더 */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 20px;
-            border-bottom: 1px solid var(--border-color);
-            position: sticky;
-            top: 0;
-            background-color: rgba(5, 7, 10, 0.8);
-            backdrop-filter: blur(12px);
-            z-index: 10;
-        }
-
-        .header h1 {
-            font-size: 1.5rem;
-            font-weight: 800;
-            background: linear-gradient(45deg, #00f260, #00c6ff); /* 청량 초록 파랑 */
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin: 0;
-        }
-
-        .header-menu a {
-            color: var(--text-color);
-            text-decoration: none;
-            font-size: 0.9rem;
-            margin-left: 14px;
-            font-weight: 600;
-            transition: color 0.2s;
-        }
-
-        .header-menu a:hover {
-            color: #00f260;
-        }
-
-        /* 검색창 링크 바 (기존 기능 연결) */
-        .search-bar-link {
-            margin: 15px 20px;
-            padding: 14px;
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            text-align: center;
-        }
-        
-        .search-bar-link a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.9rem;
-            font-weight: 500;
-            display: block;
-        }
-
-        /* 웰컴 박스 */
-        .welcome-box {
-            padding: 25px 20px;
-            border-bottom: 1px solid var(--border-color);
-            background: linear-gradient(180deg, #121620 0%, #05070a 100%);
-        }
-
-        .welcome-box p {
-            margin: 0 0 15px 0;
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: #ffffff;
-        }
-
-        /* 초록 파랑 그라데이션 버튼 */
-        .btn-gradient {
-            background: var(--gradient-instagram);
-            color: #ffffff !important;
-            font-weight: 700;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 10px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 0.9rem;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0, 198, 255, 0.2);
-        }
-
-        /* 타이틀 */
-        .section-title {
-            padding: 25px 20px 10px 20px;
-            font-size: 0.9rem;
-            font-weight: 700;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        /* 리스트 목록 */
-        .list-container {
-            padding: 0 20px;
-        }
-
-        .item-card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
-            padding: 16px;
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .item-info .title {
-            font-weight: 600;
-            color: #ffffff; /* 화이트 글씨 선명화 */
-            font-size: 1.05rem;
-            margin-bottom: 4px;
-        }
-
-        .item-info .subtitle {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        /* 액션 버튼 */
-        .btn-action {
-            background-color: #1e293b;
-            color: #ffffff;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-action:hover {
-            background: var(--gradient-instagram);
-            color: #ffffff;
-        }
-
-        .empty-msg {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            padding: 20px;
-            text-align: center;
-            background-color: var(--card-bg);
-            border-radius: 14px;
-            border: 1px dashed var(--border-color);
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #05070a; color: #ffffff; }
+        .navbar { background-color: #121620; padding: 15px 20px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }
+        .navbar h1 { font-size: 1.3rem; color: #00c6ff; }
+        .navbar a { color: #ffffff; text-decoration: none; margin-left: 15px; font-size: 0.9rem; }
+        .container { max-width: 900px; margin: 20px auto; padding: 0 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+        .card { background: #121620; padding: 20px; border-radius: 12px; border: 1px solid #1e293b; margin-bottom: 20px; }
+        .card h2 { font-size: 1.1rem; border-bottom: 1px solid #1e293b; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; color: #f8fafc; }
+        .list-group { list-style: none; }
+        .list-item { padding: 12px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; margin-bottom: 4px; }
+        .list-item a { text-decoration: none; color: #ffffff; display: flex; align-items: center; width: 100%; justify-content: space-between; }
+        .has-new-msg { background-color: rgba(0, 198, 255, 0.1); border: 1px solid rgba(0, 198, 255, 0.3); }
+        .badge-total { background: #ef4444; color: white; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; }
+        .badge-new { background: #00c6ff; color: #000; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+        .tag-unfollow { background: #f59e0b; color: #000; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px; }
+        .btn { display: inline-block; padding: 8px 14px; background: linear-gradient(135deg, #00c6ff, #0072ff); color: white; text-decoration: none; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: none; cursor: pointer; }
+        .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+        .online-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .offline-dot { width: 8px; height: 8px; background-color: #64748b; border-radius: 50%; display: inline-block; margin-right: 6px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <!-- 헤더 -->
-    <div class="header">
-        <h1>ChatClub</h1>
-        <div class="header-menu">
-            {% if user %}
-                <!-- 기존 프로필 에딧 등이 들어있는 내 프로필 기능 정상 연결 -->
-                <a href="{{ url_for('user_profile', username=user) }}">내 프로필</a>
-                <a href="{{ url_for('logout') }}">로그아웃</a>
-            {% else %}
-                <a href="{{ url_for('login') }}">로그인</a>
-                <a href="{{ url_for('register') }}">회원가입</a>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- 검색 기능 링크 바 (기존 기능 절대 보존) -->
-    <div class="search-bar-link">
-        <a href="{{ url_for('search') }}">🔍 다른 친구나 유저 검색하기</a>
-    </div>
-
-    {% if user %}
-    <!-- 유저 웰컴 세션 -->
-    <div class="welcome-box">
-        <p>반가워요, <span style="color: #00f260;">@{{ user }}</span>님!</p>
-        <a href="{{ url_for('create_group') }}" class="btn-gradient">➕ 새 단톡방 개설하기</a>
-    </div>
-
-    <!-- 1:1 디엠 상대방 목록 (app.py의 all_users 데이터를 안전하게 출력) -->
-    <div class="section-title">1:1 디엠 상대방 목록</div>
-    <div class="list-container">
-        {% if all_users %}
-            {% for u in all_users %}
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 6px 0;">
+    <div class="navbar">
+        <h1>💬 ChatClub</h1>
         <div>
-            <strong style="color: #ffffff;">{{ u.nickname }}</strong> 
-            <span style="color: #94a3b8; font-size: 0.85rem; margin-right: 6px;">@{{ u.username }}</span>
-            
-            <!-- 🟢 여기부터 온라인/오프라인 불빛 코드가 추가됩니다 -->
-            {% if u.is_online %}
-                <span style="color: #22c55e; font-size: 0.8rem; background: rgba(34, 197, 94, 0.15); padding: 2px 6px; border-radius: 10px; font-weight: bold;">🟢 온라인</span>
+            {% if user %}
+                <span style="font-size: 0.9rem; color: #94a3b8;"><strong>{{ user }}</strong>님</span>
+                {% if user == 'admin' %}
+                    <a href="/admin/dashboard" style="color: #fbbf24;">👑 관리자</a>
+                {% endif %}
+                <a href="/user/{{ user }}">프로필</a>
+                <a href="/logout">로그아웃</a>
             {% else %}
-                <span style="color: #64748b; font-size: 0.8rem; background: rgba(100, 116, 139, 0.15); padding: 2px 6px; border-radius: 10px;">⚫ 오프라인</span>
+                <a href="/login">로그인</a>
+                <a href="/register">회원가입</a>
             {% endif %}
-            <!-- 🟢 여기까지 -->
         </div>
-        
-        <a href="{{ url_for('dm_chat', username=u.username) }}" style="text-decoration: none; background: linear-gradient(135deg, #00c6ff, #0072ff); color: white; padding: 6px 12px; border-radius: 16px; font-size: 0.85rem; font-weight: bold;">갠톡</a>
-    </div>
-{% endfor %}
-        {% else %}
-            <div class="empty-msg">대화 가능한 다른 멤버가 아직 없습니다.</div>
-        {% endif %}
     </div>
 
-    <!-- 단톡방 목록 섹션 -->
-    <div class="section-title">오픈 단톡방 리스트</div>
-    <div class="list-container">
-        {% if my_rooms %}
-            {% for room in my_rooms %}
-            <div class="item-card">
-                <div class="item-info">
-                    <div class="title">{{ room.room_name }}</div>
-                    <div class="subtitle">방 번호: #{{ room.id }}</div>
+    <div class="container">
+        {% if user %}
+            <!-- 왼쪽 컬럼: 1:1 대화 목록 & 친구 목록 -->
+            <div>
+                <!-- 🔥 [필수] 미팔로우 선톡까지 표시되는 1:1 갠톡 목록 -->
+                <div class="card">
+                    <h2>
+                        💬 1:1 갠톡 목록
+                        {% if unread_total > 0 %}
+                            <span class="badge-total">🔴 {{ unread_total }}</span>
+                        {% endif %}
+                    </h2>
+                    <ul class="list-group">
+                        {% for chat in dm_list %}
+                            <li class="list-item {% if chat.unread_count > 0 %}has-new-msg{% endif %}">
+                                <a href="{{ url_for('dm_chat', username=chat.username) }}">
+                                    <div>
+                                        <strong>{{ chat.nickname }}</strong> 
+                                        <span style="font-size: 0.8rem; color: #94a3b8;">@{{ chat.username }}</span>
+                                        
+                                        <!-- 팔로우하지 않은 사람에게 선톡 온 경우 표시 -->
+                                        {% if not chat.is_following %}
+                                            <span class="tag-unfollow">✉️ 미팔로우 선톡</span>
+                                        {% endif %}
+                                    </div>
+
+                                    {% if chat.unread_count > 0 %}
+                                        <span class="badge-new">NEW {{ chat.unread_count }}</span>
+                                    {% endif %}
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="list-item" style="color: #94a3b8; font-size: 0.85rem;">진행 중인 갠톡이나 선톡이 없습니다.</li>
+                        {% endfor %}
+                    </ul>
                 </div>
-                <a href="{{ url_for('group_chat', room_id=room.id) }}" class="btn-action">입장하기</a>
+
+                <!-- 팔로우 친구 목록 -->
+                <div class="card">
+                    <h2>👥 내가 팔로우하는 친구</h2>
+                    <ul class="list-group">
+                        {% for friend in all_users %}
+                            <li class="list-item">
+                                <div>
+                                    {% if friend.is_online %}
+                                        <span class="online-dot" title="온라인"></span>
+                                    {% else %}
+                                        <span class="offline-dot" title="오프라인"></span>
+                                    {% endif %}
+                                    <span>{{ friend.nickname }}</span>
+                                    <span style="font-size: 0.8rem; color: #94a3b8;">@{{ friend.username }}</span>
+                                </div>
+                                <a href="{{ url_for('dm_chat', username=friend.username) }}" class="btn btn-sm">선톡하기</a>
+                            </li>
+                        {% else %}
+                            <li class="list-item" style="color: #94a3b8; font-size: 0.85rem;">팔로우 중인 유저가 없습니다.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
-            {% endfor %}
+
+            <!-- 오른쪽 컬럼: 단톡방 & 오픈채팅 & 검색 -->
+            <div>
+                <div class="card">
+                    <h2>
+                        🔒 비밀 단톡방
+                        <a href="{{ url_for('create_group') }}" class="btn btn-sm">+ 만들기</a>
+                    </h2>
+                    <ul class="list-group">
+                        {% for room in my_rooms %}
+                            <li class="list-item">
+                                <span>{{ room.room_name }}</span>
+                                <a href="{{ url_for('group_chat', room_id=room.id) }}" class="btn btn-sm">입장</a>
+                            </li>
+                        {% else %}
+                            <li class="list-item" style="color: #94a3b8; font-size: 0.85rem;">참여 중인 단톡방이 없습니다.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h2>🌿 오픈채팅 광장</h2>
+                    <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 12px;">자유롭게 참여 가능한 오픈 대화방입니다.</p>
+                    <a href="{{ url_for('open_chat_list') }}" class="btn" style="width: 100%; text-align: center;">오픈채팅 목록 가기</a>
+                </div>
+
+                <div class="card">
+                    <h2>🔍 유저 검색</h2>
+                    <form action="/search" method="GET" style="display: flex; gap: 8px;">
+                        <input type="text" name="query" placeholder="아이디 검색..." style="flex: 1; padding: 10px; background: #05070a; border: 1px solid #1e293b; border-radius: 8px; color: white; outline: none;" required>
+                        <button type="submit" class="btn">검색</button>
+                    </form>
+                </div>
+            </div>
         {% else %}
-            <div class="empty-msg">개설된 단톡방이 없습니다. 방을 만들어보세요!</div>
+            <div class="card" style="grid-column: span 2; text-align: center; padding: 60px 20px;">
+                <h2 style="font-size: 1.8rem; color: #00c6ff; border: none; justify-content: center;">Welcome to ChatClub! 🎉</h2>
+                <p style="margin: 20px 0; color: #94a3b8;">익명 메시지, 1:1 선톡, 단톡방, 오픈채팅을 시작해 보세요.</p>
+                <a href="/login" class="btn" style="padding: 10px 24px; margin-right: 10px;">로그인</a>
+                <a href="/register" class="btn" style="padding: 10px 24px; background: #334155;">회원가입</a>
+            </div>
         {% endif %}
     </div>
-    <!-- 🌿 익명 오픈채팅 스페이스 섹션 (이 코드가 들어가야 방을 만들 수 있습니다!) -->
-    <div class="section-title">🌿 익명 오픈채팅 스페이스</div>
-    <div class="list-container">
-        <div class="item-card" style="border: 1px solid #10b981; background: linear-gradient(135deg, #121620 0%, #061f14 100%); flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 14px; margin-bottom: 12px;">
-            <div class="item-info">
-                <div class="title" style="color: #34d399; font-size: 1.1rem; font-weight: 600;">실시간 익명 오픈채팅 광장</div>
-                <div class="subtitle" style="margin-top: 4px; color: #94a3b8; font-size: 0.85rem;">본캐를 숨기고 자유롭게 방을 만들거나 참여해보세요!</div>
-            </div>
-            <a href="{{ url_for('open_chat_list') }}" class="btn-gradient" style="background: linear-gradient(45deg, #10b981, #059669); width: 100%; box-sizing: border-box; text-align: center; padding: 12px; border-radius: 10px; color: white; text-decoration: none; font-weight: 700; display: block;">
-                오픈채팅방 전체 목록 / 방 만들기 🚀
-            </a>
-        </div>
-    </div>
-    {% else %}
-    <!-- 로그인 유도 화면 -->
-    <div style="padding: 60px 20px; text-align: center;">
-        <p style="font-size: 1.2rem; color: #ffffff; font-weight: 700; margin-bottom: 8px;">소통 플랫폼 ChatClub</p>
-        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 25px;">서비스 이용을 위해 로그인을 진행해주세요.</p>
-        <a href="{{ url_for('login') }}" class="btn-gradient" style="padding: 14px 40px;">시작하기</a>
-    </div>
-    {% endif %}
-</div>
 
 </body>
-</html>
+    </html>
