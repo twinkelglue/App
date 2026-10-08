@@ -52,7 +52,10 @@
         .msg-wrapper.other { align-self: flex-start; align-items: flex-start; }
 
         .msg-sender { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; padding: 0 4px; }
-        .msg-bubble { padding: 12px 16px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; word-break: break-all; }
+        .msg-bubble {
+            padding: 12px 16px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; word-break: break-all;
+            user-select: none; cursor: pointer;
+        }
 
         .me .msg-bubble {
             background: var(--gradient-instagram); color: #ffffff; font-weight: 600;
@@ -62,6 +65,7 @@
         .other .msg-bubble {
             background-color: var(--card-bg); color: #ffffff;
             border: 1px solid var(--border-color); border-bottom-left-radius: 4px;
+            cursor: default;
         }
 
         .msg-time { font-size: 0.75rem; color: var(--text-muted); margin-top: 5px; padding: 0 4px; }
@@ -85,36 +89,32 @@
 <body>
 
 <div class="chat-container">
-<div class="chat-header">
-    <a href="{{ url_for('index') }}" class="btn-back">❮</a>
-    <div class="room-info">
-        <div class="name">{{ room.room_name }}</div>
-        <div style="font-size: 0.8rem; color: var(--text-muted);">멤버 전용 단톡방</div>
+    <div class="chat-header">
+        <a href="{{ url_for('index') }}" class="btn-back">❮</a>
+        <div class="room-info">
+            <div class="name">{{ room.room_name }}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">멤버 전용 단톡방</div>
+        </div>
+        
+        <form action="{{ url_for('leave_group', room_id=room_id) }}" method="POST" onsubmit="return confirm('정말 이 단톡방에서 나가시겠습니까?');" style="margin: 0;">
+            <button type="submit" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 6px 12px; border-radius: 16px; font-weight: bold; cursor: pointer; font-size: 0.85rem;">
+                🚪 나가기
+            </button>
+        </form>
     </div>
-    
-    <!-- 🚪 방 나가기 버튼 추가 -->
-    <form action="{{ url_for('leave_group', room_id=room_id) }}" method="POST" onsubmit="return confirm('정말 이 단톡방에서 나가시겠습니까?\n나간 후에는 다시 초대받아야만 들어올 수 있습니다.');" style="margin: 0;">
-        <button type="submit" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 6px 12px; border-radius: 16px; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s;">
-            🚪 나가기
-        </button>
-    </form>
-</div>
 
     <div class="chat-messages" id="chatMessages">
         {% if messages %}
             {% for msg in messages %}
                 {% if msg.sender == session['user'] %}
-                    <div class="msg-wrapper me">
-                        <div class="msg-bubble">{{ msg.message }}</div>
-                        <button onclick="deleteMessage('general', '{{ msg.id }}')" style="background:none; border:none; cursor:pointer;">❌</button>
+                    <div class="msg-wrapper me" id="msg-box-{{ msg.id }}">
+                        <div class="msg-bubble my-msg" data-msg-id="{{ msg.id }}">{{ msg.message }}</div>
                         <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
                     </div>
                 {% else %}
                     <div class="msg-wrapper other">
-                        <!-- 단톡방이므로 보낸 사람의 닉네임 유저 표시 추가 -->
                         <div class="msg-sender">@{{ msg.sender }}</div>
                         <div class="msg-bubble">{{ msg.message }}</div>
-                        <button onclick="deleteMessage('general', '{{ msg.id }}')" style="background:none; border:none; cursor:pointer;">❌</button>
                         <div class="msg-time">{{ msg.created_at.strftime('%H:%M') }}</div>
                     </div>
                 {% endif %}
@@ -135,51 +135,26 @@
 <script>
     const chatBox = document.getElementById('chatMessages');
     chatBox.scrollTop = chatBox.scrollHeight;
- 
-</script>
-<script>
-let pressTimer;
 
-document.querySelectorAll('.message-item').forEach(msgElement => {
-    const startPress = (e) => {
-        if (!msgElement.classList.contains('my-message')) return;
-        pressTimer = window.setTimeout(() => { showDeleteConfirm(msgElement); }, 600);
-    };
-
-    const cancelPress = () => { clearTimeout(pressTimer); };
-
-    msgElement.addEventListener('touchstart', startPress);
-    msgElement.addEventListener('touchend', cancelPress);
-    msgElement.addEventListener('touchmove', cancelPress);
-    msgElement.addEventListener('mousedown', startPress);
-    msgElement.addEventListener('mouseup', cancelPress);
-    msgElement.addEventListener('mouseleave', cancelPress);
-    
-    msgElement.addEventListener('contextmenu', (e) => {
-        if (msgElement.classList.contains('my-message')) {
-            e.preventDefault();
-            showDeleteConfirm(msgElement);
-        }
-    });
-});
-
-function showDeleteConfirm(element) {
-    const messageId = element.dataset.messageId;
-    if (confirm("이 메시지를 삭제하시겠습니까?")) {
-        fetch(`/delete_message/${messageId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                element.remove();
-            } else {
-                alert("메시지 삭제 실패: " + data.message);
+    document.querySelectorAll('.my-msg').forEach(msgElement => {
+        msgElement.addEventListener('dblclick', function() {
+            const messageId = this.getAttribute('data-msg-id');
+            if (confirm("이 메시지를 삭제하시겠습니까?")) {
+                fetch(`/delete_chat_message/group/${messageId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById(`msg-box-${messageId}`).remove();
+                    } else {
+                        alert("삭제 실패: " + data.message);
+                    }
+                });
             }
         });
-    }
-}
+    });
 </script>
 </body>
 </html>
