@@ -26,7 +26,6 @@
         .header h2 { margin: 0; font-size: 1.1rem; color: var(--accent); }
         .header p { margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted); }
         
-        /* 닉네임 설정 화면 */
         .name-container {
             flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px;
         }
@@ -44,7 +43,6 @@
             border-radius: 8px; padding: 12px; font-weight: bold; cursor: pointer; font-size: 1rem;
         }
 
-        /* 채팅 화면 */
         .chat-box {
             flex: 1; overflow-y: auto; padding: 20px;
             display: flex; flex-direction: column; gap: 12px;
@@ -57,9 +55,10 @@
         .bubble {
             max-width: 70%; padding: 10px 14px; border-radius: 16px;
             font-size: 0.95rem; line-height: 1.4; word-break: break-all;
+            user-select: none; cursor: pointer;
         }
         .msg-row.me .bubble { background-color: var(--accent); color: white; border-bottom-right-radius: 4px; }
-        .msg-row.other .bubble { background-color: var(--bg-card); color: white; border-bottom-left-radius: 4px; border: 1px solid #1e293b; }
+        .msg-row.other .bubble { background-color: var(--bg-card); color: white; border-bottom-left-radius: 4px; border: 1px solid #1e293b; cursor: default; }
         
         .time { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
         
@@ -84,7 +83,6 @@
 <body>
 
 {% if not anon_name %}
-    <!-- 🛑 1단계: 이 방에서 쓸 닉네임 설정창 -->
     <div class="name-container">
         <form class="name-form" method="POST" action="{{ url_for('open_chat_room', room_id=room.id) }}">
             <h3 style="margin: 0; color: var(--accent);">🌿 오픈채팅 프로필 설정</h3>
@@ -94,7 +92,6 @@
         </form>
     </div>
 {% else %}
-    <!-- 💬 2단계: 실제 오픈채팅방 -->
     <div class="header">
         <div class="header-title">
             <h2>💬 {{ room.title }}</h2>
@@ -103,56 +100,48 @@
         <a href="{{ url_for('open_chat_list') }}" class="exit-btn">나가기</a>
     </div>
 
-<div class="chat-box" id="chatBox">
-    {% for msg in messages %}
-        <div class="msg-row {% if msg.sender_anon == anon_name %}me{% else %}other{% endif %}">
-            
-            <!-- 닉네임 및 권한 뱃지 / 관리자 메뉴 라인 -->
-            <div class="anon-name" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <span>{{ msg.sender_anon }}</span>
-                
-                <!-- 👑 방장/부방장 왕관 표시 -->
-                {% if msg.sender_real_id == room.created_by %}
-                    <span style="color: #fbbf24; font-size: 0.7rem; background: rgba(251, 191, 36, 0.15); padding: 1px 4px; border-radius: 4px;">👑 방장</span>
-                {% elif msg.sender_real_id == room.sub_host %}
-                    <span style="color: #60a5fa; font-size: 0.7rem; background: rgba(96, 165, 250, 0.15); padding: 1px 4px; border-radius: 4px;">⭐ 부방장</span>
-                {% endif %}
-                
-                <!-- 🛠️ 관리자 전용 기능 메뉴 -->
-                {% if (is_host or is_sub_host) and msg.sender_real_id != session.get('user') %}
-                    <div style="display: inline-flex; gap: 4px; margin-left: 4px;">
-                        <!-- 강퇴 버튼 -->
-                        <form action="{{ url_for('open_chat_ban_user', room_id=room.id) }}" method="POST" style="margin:0;" onsubmit="return confirm('이 유저를 정말 강퇴하시겠습니까? 관련 메시지도 모두 삭제됩니다.');">
-                            <input type="hidden" name="target_user" value="{{ msg.sender_real_id }}">
-                            <button type="submit" style="background: #ef4444; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">강퇴</button>
-                        </form>
-                        
-                        <!-- 부방장 임명/해임 버튼 (오직 방장만 가능) -->
-                        {% if is_host %}
-                            <form action="{{ url_for('open_chat_set_sub', room_id=room.id) }}" method="POST" style="margin:0;">
+    <div class="chat-box" id="chatBox">
+        {% for msg in messages %}
+            <div class="msg-row {% if msg.sender_anon == anon_name %}me{% else %}other{% endif %}" id="msg-box-{{ msg.id }}">
+                <div class="anon-name" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span>{{ msg.sender_anon }}</span>
+                    
+                    {% if msg.sender_real_id == room.created_by %}
+                        <span style="color: #fbbf24; font-size: 0.7rem; background: rgba(251, 191, 36, 0.15); padding: 1px 4px; border-radius: 4px;">👑 방장</span>
+                    {% elif msg.sender_real_id == room.sub_host %}
+                        <span style="color: #60a5fa; font-size: 0.7rem; background: rgba(96, 165, 250, 0.15); padding: 1px 4px; border-radius: 4px;">⭐ 부방장</span>
+                    {% endif %}
+                    
+                    {% if (is_host or is_sub_host) and msg.sender_real_id != session.get('user') %}
+                        <div style="display: inline-flex; gap: 4px; margin-left: 4px;">
+                            <form action="{{ url_for('open_chat_ban_user', room_id=room.id) }}" method="POST" style="margin:0;" onsubmit="return confirm('이 유저를 정말 강퇴하시겠습니까?');">
                                 <input type="hidden" name="target_user" value="{{ msg.sender_real_id }}">
-                                {% if msg.sender_real_id == room.sub_host %}
-                                    <input type="hidden" name="action" value="dismiss">
-                                    <button type="submit" style="background: #64748b; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">해임</button>
-                                {% else %}
-                                    <input type="hidden" name="action" value="appoint">
-                                    <button type="submit" style="background: #3b82f6; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">부방장</button>
-                                {% endif %}
+                                <button type="submit" style="background: #ef4444; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">강퇴</button>
                             </form>
-                        {% endif %}
-                    </div>
-                {% endif %}
-            </div>
+                            
+                            {% if is_host %}
+                                <form action="{{ url_for('open_chat_set_sub', room_id=room.id) }}" method="POST" style="margin:0;">
+                                    <input type="hidden" name="target_user" value="{{ msg.sender_real_id }}">
+                                    {% if msg.sender_real_id == room.sub_host %}
+                                        <input type="hidden" name="action" value="dismiss">
+                                        <button type="submit" style="background: #64748b; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">해임</button>
+                                    {% else %}
+                                        <input type="hidden" name="action" value="appoint">
+                                        <button type="submit" style="background: #3b82f6; color: white; border: none; padding: 1px 5px; font-size: 0.65rem; border-radius: 4px; cursor: pointer;">부방장</button>
+                                    {% endif %}
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
 
-            <!-- 말풍선 및 시간 -->
-            <div class="bubble">{{ msg.message }}</div>
-            <button onclick="deleteMessage('open', '{{ msg.id }}')" style="background:none; border:none; cursor:pointer;">❌</button>
-            <div class="time">
-                {% if msg.created_at %}{{ msg.created_at.strftime('%H:%M') }}{% endif %}
+                <div class="bubble {% if msg.sender_anon == anon_name %}my-msg{% endif %}" data-msg-id="{{ msg.id }}">{{ msg.message }}</div>
+                <div class="time">
+                    {% if msg.created_at %}{{ msg.created_at.strftime('%H:%M') }}{% endif %}
+                </div>
             </div>
-        </div>
-    {% endfor %}
-</div>
+        {% endfor %}
+    </div>
 
     <form class="input-form" action="{{ url_for('send_open_message', room_id=room.id) }}" method="POST">
         <input type="text" name="message" placeholder="메시지를 입력하세요..." required autocomplete="off">
@@ -162,51 +151,27 @@
     <script>
         const box = document.getElementById('chatBox');
         box.scrollTop = box.scrollHeight;
+
+        document.querySelectorAll('.my-msg').forEach(msgElement => {
+            msgElement.addEventListener('dblclick', function() {
+                const messageId = this.getAttribute('data-msg-id');
+                if (confirm("이 메시지를 삭제하시겠습니까?")) {
+                    fetch(`/delete_chat_message/open/${messageId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            document.getElementById(`msg-box-${messageId}`).remove();
+                        } else {
+                            alert("삭제 실패: " + data.message);
+                        }
+                    });
+                }
+            });
+        });
     </script>
 {% endif %}
-<script>
-let pressTimer;
-
-document.querySelectorAll('.message-item').forEach(msgElement => {
-    const startPress = (e) => {
-        if (!msgElement.classList.contains('my-message')) return;
-        pressTimer = window.setTimeout(() => { showDeleteConfirm(msgElement); }, 600);
-    };
-
-    const cancelPress = () => { clearTimeout(pressTimer); };
-
-    msgElement.addEventListener('touchstart', startPress);
-    msgElement.addEventListener('touchend', cancelPress);
-    msgElement.addEventListener('touchmove', cancelPress);
-    msgElement.addEventListener('mousedown', startPress);
-    msgElement.addEventListener('mouseup', cancelPress);
-    msgElement.addEventListener('mouseleave', cancelPress);
-    
-    msgElement.addEventListener('contextmenu', (e) => {
-        if (msgElement.classList.contains('my-message')) {
-            e.preventDefault();
-            showDeleteConfirm(msgElement);
-        }
-    });
-});
-
-function showDeleteConfirm(element) {
-    const messageId = element.dataset.messageId;
-    if (confirm("이 메시지를 삭제하시겠습니까?")) {
-        fetch(`/delete_message/${messageId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                element.remove();
-            } else {
-                alert("메시지 삭제 실패: " + data.message);
-            }
-        });
-    }
-}
-</script>
 </body>
 </html>
