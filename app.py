@@ -10,12 +10,11 @@ os.environ['TZ'] = 'Asia/Seoul'
 try:
     time.tzset()
 except AttributeError:
-    pass # Windows 환경 고려
+    pass
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
 
-# Neon DB 연동 설정
 DATABASE_URL = os.environ.get("DATABASE_URL", "your_neon_db_connection_string_here")
 
 def get_db_connection():
@@ -25,7 +24,6 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username VARCHAR(50) PRIMARY KEY,
@@ -38,7 +36,6 @@ def init_db():
         );
     """)
     
-    # 2. 팔로우 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS follows (
             column_id SERIAL PRIMARY KEY,
@@ -48,7 +45,6 @@ def init_db():
         );
     """)
     
-    # 3. 익명 에스크 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ask_messages (
             id SERIAL PRIMARY KEY,
@@ -60,7 +56,6 @@ def init_db():
         );
     """)
     
-    # 4. 단톡방 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chat_rooms (
             id SERIAL PRIMARY KEY,
@@ -69,7 +64,6 @@ def init_db():
         );
     """)
     
-    # 4-1. 단톡방 멤버 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS room_members (
             id SERIAL PRIMARY KEY,
@@ -79,7 +73,6 @@ def init_db():
         );
     """)
     
-    # 5. 단톡방 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS room_messages (
             id SERIAL PRIMARY KEY,
@@ -90,7 +83,6 @@ def init_db():
         );
     """)
     
-    # 6. 1:1 개인톡(DM) 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS direct_messages (
             id SERIAL PRIMARY KEY,
@@ -102,7 +94,6 @@ def init_db():
         );
     """)
     
-    # 7. 오픈채팅방 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_rooms (
             id SERIAL PRIMARY KEY,
@@ -113,7 +104,6 @@ def init_db():
         );
     """)
     
-    # 8. 오픈채팅 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_messages (
             id SERIAL PRIMARY KEY,
@@ -125,7 +115,6 @@ def init_db():
         );
     """)
     
-    # 9. 오픈채팅 강퇴 유저 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_banned_users (
             id SERIAL PRIMARY KEY,
@@ -161,6 +150,8 @@ def index():
     user = session.get('user')
     my_rooms = []
     all_users = []
+    dm_list = []
+    unread_total = 0
     
     conn = get_db_connection()
     cur = conn.cursor()
@@ -185,10 +176,34 @@ def index():
             ORDER BY is_online DESC, u.nickname ASC
         """, (user,))
         all_users = cur.fetchall()
+
+        cur.execute("""
+            SELECT 
+                partner.username,
+                partner.nickname,
+                f.column_id IS NOT NULL AS is_following,
+                COUNT(dm.id) FILTER (WHERE dm.receiver = %s AND dm.is_read = FALSE) AS unread_count,
+                MAX(dm.created_at) AS last_msg_time
+            FROM (
+                SELECT sender AS partner_id FROM direct_messages WHERE receiver = %s
+                UNION
+                SELECT receiver AS partner_id FROM direct_messages WHERE sender = %s
+            ) sub
+            JOIN users partner ON partner.username = sub.partner_id AND partner.is_active = TRUE
+            LEFT JOIN direct_messages dm 
+                   ON (dm.sender = partner.username AND dm.receiver = %s) 
+                   OR (dm.sender = %s AND dm.receiver = partner.username)
+            LEFT JOIN follows f ON f.follower = %s AND f.following = partner.username
+            GROUP BY partner.username, partner.nickname, f.column_id
+            ORDER BY unread_count DESC, last_msg_time DESC;
+        """, (user, user, user, user, user, user))
+        dm_list = cur.fetchall()
+
+        unread_total = sum(item['unread_count'] for item in dm_list)
         
     cur.close()
     conn.close()
-    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, user=user)
+    return render_template('index.html', my_rooms=my_rooms, all_users=all_users, dm_list=dm_list, unread_total=unread_total, user=user)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -428,14 +443,12 @@ def search():
 @app.route('/my_chats')
 def my_joined_rooms():
     current_user = session.get('user')
-    
     if not current_user:
         flash("로그인이 필요한 서비스입니다.")
         return redirect('/login')
         
     conn = get_db_connection()
     cur = conn.cursor()
-    
     cur.execute("""
         SELECT r.id, r.room_name, r.created_by, 
                (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) as member_count
@@ -444,11 +457,9 @@ def my_joined_rooms():
         WHERE m.user_id = %s
         ORDER BY r.id DESC
     """, (current_user,))
-    
     my_rooms = cur.fetchall()
     cur.close()
     conn.close()
-    
     return render_template('my_chats.html', rooms=my_rooms, current_user=current_user)
 
 @app.route('/user/<username>')
@@ -589,7 +600,7 @@ def leave_group(room_id):
         return f"방을 나가는 중 오류가 발생했습니다: {str(e)}", 500
 
 # ----------------------------------------------------------------
-# 🌿 오픈채팅 기능 라우팅
+# 🌿 오픈채팅 기능 라우팅 (목록 분리 + 닉네임 자동 저장 적용)
 # ----------------------------------------------------------------
 @app.route('/open_chat_list')
 def open_chat_list():
@@ -598,12 +609,25 @@ def open_chat_list():
     
     conn = get_db_connection()
     cur = conn.cursor()
+    
+    # 1. 전체 오픈채팅방 목록
     cur.execute("SELECT id, title, created_by, sub_host, created_at FROM open_rooms ORDER BY created_at DESC")
-    rooms = cur.fetchall()
+    all_rooms = cur.fetchall()
+    
+    # 2. 내가 들어간(메시지를 하나라도 남겼거나 개설한) 오픈채팅방 목록
+    cur.execute("""
+        SELECT DISTINCT r.id, r.title, r.created_by, r.sub_host, r.created_at
+        FROM open_rooms r
+        LEFT JOIN open_messages m ON r.id = m.room_id
+        WHERE r.created_by = %s OR m.sender_real_id = %s
+        ORDER BY r.created_at DESC
+    """, (user, user))
+    my_open_rooms = cur.fetchall()
+    
     cur.close()
     conn.close()
     
-    return render_template('open_room_list.html', rooms=rooms)
+    return render_template('open_room_list.html', all_rooms=all_rooms, my_open_rooms=my_open_rooms)
 
 @app.route('/create_open_room', methods=['POST'])
 def create_open_room():
@@ -649,6 +673,7 @@ def open_chat_room(room_id):
     is_host = (room['created_by'] == user or user == 'admin')
     is_sub_host = (room['sub_host'] == user)
     
+    # 닉네임 설정 POST 요청 시 처리
     if request.method == 'POST':
         custom_name = request.form.get('custom_name', '').strip()
         if custom_name:
@@ -657,8 +682,17 @@ def open_chat_room(room_id):
             conn.close()
             return redirect(url_for('open_chat_room', room_id=room_id))
             
+    # 세션에서 익명 닉네임 확인
     anon_name = session.get(f'anon_name_{room_id}')
     
+    # 세션에 없으면 이전 작성 메시지 기록에서 가져오기 (닉네임 재입력 방지)
+    if not anon_name:
+        cur.execute("SELECT sender_anon FROM open_messages WHERE room_id = %s AND sender_real_id = %s ORDER BY id DESC LIMIT 1", (room_id, user))
+        prev_msg = cur.fetchone()
+        if prev_msg:
+            anon_name = prev_msg['sender_anon']
+            session[f'anon_name_{room_id}'] = anon_name
+            
     if not anon_name:
         cur.close()
         conn.close()
@@ -882,6 +916,9 @@ def delete_open_room(room_id):
         conn.close()
         return "삭제 권한이 없습니다.", 403
 
+# ----------------------------------------------------------------
+# 메시지 삭제 API (일반/단톡방/오픈채팅 공용)
+# ----------------------------------------------------------------
 @app.route('/delete_chat_message/<string:chat_type>/<int:message_id>', methods=['POST'])
 def delete_message(chat_type, message_id):
     user = session.get('user')
@@ -893,6 +930,7 @@ def delete_message(chat_type, message_id):
     cur = conn.cursor()
     
     try:
+        # 1. 오픈채팅 메시지 삭제
         if chat_type == 'open':
             cur.execute("SELECT sender_real_id, room_id FROM open_messages WHERE id = %s", (message_id,))
             msg = cur.fetchone()
@@ -909,8 +947,9 @@ def delete_message(chat_type, message_id):
             if user == 'admin' or user == room_owner or user == msg_sender:
                 cur.execute("DELETE FROM open_messages WHERE id = %s", (message_id,))
                 conn.commit()
-                return jsonify({"success": True, "message": "오픈채팅 메시지가 삭제되었습니다."})
+                return jsonify({"success": True, "message": "메시지가 삭제되었습니다."})
                 
+        # 2. 일반 DM 메시지 삭제
         elif chat_type == 'general':
             cur.execute("SELECT sender FROM direct_messages WHERE id = %s", (message_id,))
             msg = cur.fetchone()
@@ -922,7 +961,26 @@ def delete_message(chat_type, message_id):
             if user == 'admin' or user == msg_sender:
                 cur.execute("DELETE FROM direct_messages WHERE id = %s", (message_id,))
                 conn.commit()
-                return jsonify({"success": True, "message": "일반채팅 메시지가 삭제되었습니다."})
+                return jsonify({"success": True, "message": "메시지가 삭제되었습니다."})
+
+        # 3. 단톡방 메시지 삭제
+        elif chat_type == 'group':
+            cur.execute("SELECT sender, room_id FROM room_messages WHERE id = %s", (message_id,))
+            msg = cur.fetchone()
+            if not msg:
+                return jsonify({"success": False, "message": "존재하지 않는 메시지입니다."}), 404
+                
+            msg_sender = msg['sender']
+            room_id = msg['room_id']
+            
+            cur.execute("SELECT created_by FROM chat_rooms WHERE id = %s", (room_id,))
+            room = cur.fetchone()
+            room_owner = room['created_by'] if room else None
+            
+            if user == 'admin' or user == room_owner or user == msg_sender:
+                cur.execute("DELETE FROM room_messages WHERE id = %s", (message_id,))
+                conn.commit()
+                return jsonify({"success": True, "message": "메시지가 삭제되었습니다."})
                 
         return jsonify({"success": False, "message": "삭제 권한이 없거나 잘못된 요청입니다."}), 403
         
