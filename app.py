@@ -1,12 +1,16 @@
 import os
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+import time
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
+from werkzeug.security import generate_password_hash, check_password_hash
 import psycopg
 from psycopg.rows import dict_row
-from datetime import datetime
-import time
 
 os.environ['TZ'] = 'Asia/Seoul'
-time.tzset()
+try:
+    time.tzset()
+except AttributeError:
+    pass # Windows 환경 고려
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chatclub_secret_key_1234")
@@ -64,8 +68,8 @@ def init_db():
             created_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL
         );
     """)
-
-    # 4-1. 단톡방 멤버 테이블 (기존 코드 누락분 보완)
+    
+    # 4-1. 단톡방 멤버 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS room_members (
             id SERIAL PRIMARY KEY,
@@ -85,7 +89,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-
+    
     # 6. 1:1 개인톡(DM) 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS direct_messages (
@@ -97,8 +101,8 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-
-    # 7. 오픈채팅방 테이블 (기존 코드 누락분 보완)
+    
+    # 7. 오픈채팅방 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_rooms (
             id SERIAL PRIMARY KEY,
@@ -108,8 +112,8 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-
-    # 8. 오픈채팅 메시지 테이블 (기존 코드 누락분 보완)
+    
+    # 8. 오픈채팅 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_messages (
             id SERIAL PRIMARY KEY,
@@ -120,8 +124,8 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-
-    # 9. 오픈채팅 강퇴 유저 테이블 (기존 코드 누락분 보완)
+    
+    # 9. 오픈채팅 강퇴 유저 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_banned_users (
             id SERIAL PRIMARY KEY,
@@ -135,7 +139,6 @@ def init_db():
     cur.close()
     conn.close()
 
-# 앱 시작 시 DB 초기화
 init_db()
 
 @app.before_request
@@ -150,7 +153,7 @@ def update_last_seen():
             conn.commit()
             cur.close()
             conn.close()
-        except:
+        except Exception:
             pass
 
 @app.route('/')
@@ -197,6 +200,7 @@ def register():
         if not username or not password or not nickname:
             return "모든 필드를 입력해주세요.", 400
             
+        hashed_password = generate_password_hash(password)
         conn = get_db_connection()
         cur = conn.cursor()
         
@@ -204,12 +208,12 @@ def register():
         existing = cur.fetchone()
         
         if existing:
-            if existing['is_active'] == False:
+            if not existing['is_active']:
                 cur.execute("""
                     UPDATE users 
                     SET password = %s, nickname = %s, bio = '안녕하세요! ChatClub입니다.', profile_img = 'default.png', is_active = TRUE 
                     WHERE username = %s
-                """, (password, nickname, username))
+                """, (hashed_password, nickname, username))
                 conn.commit()
                 cur.close()
                 conn.close()
@@ -220,7 +224,7 @@ def register():
                 conn.close()
                 return "이미 존재하는 아이디입니다.", 400
         
-        cur.execute("INSERT INTO users (username, password, nickname) VALUES (%s, %s, %s)", (username, password, nickname))
+        cur.execute("INSERT INTO users (username, password, nickname) VALUES (%s, %s, %s)", (username, hashed_password, nickname))
         conn.commit()
         cur.close()
         conn.close()
@@ -233,20 +237,22 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username').strip()
         password = request.form.get('password')
-
+        
         if username == 'admin' and password == 'admin1234':
             session['user'] = 'admin'
+            session['role'] = 'ADMIN'
             return "<script>alert('👑 최고 관리자 모드로 로그인되었습니다.'); location.href='/admin/dashboard';</script>"
-
+            
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE username = %s AND password = %s AND is_active = TRUE", (username, password))
+        cur.execute("SELECT * FROM users WHERE username = %s AND is_active = TRUE", (username,))
         user = cur.fetchone()
         cur.close()
         conn.close()
         
-        if user:
+        if user and check_password_hash(user['password'], password):
             session['user'] = user['username']
+            session['role'] = 'USER'
             return redirect(url_for('index'))
         else:
             return "아이디 또는 비밀번호가 잘못되었거나 탈퇴한 회원입니다.", 401
@@ -254,7 +260,7 @@ def login():
 
 @app.route('/logout')
 def logout():
-    session.pop('user', None)
+    session.clear()
     return redirect(url_for('index'))
 
 @app.route('/delete_account', methods=['POST'])
@@ -271,7 +277,7 @@ def delete_account():
     cur.close()
     conn.close()
     
-    session.pop('user', None)
+    session.clear()
     return redirect(url_for('index'))
 
 @app.route('/chat/dm/<username>', methods=['GET', 'POST'])
@@ -303,7 +309,7 @@ def dm_chat(username):
             return redirect(url_for('dm_chat', username=username))
             
     cur.execute("""
-        SELECT sender, message, created_at, is_read FROM direct_messages 
+        SELECT id, sender, message, created_at, is_read FROM direct_messages 
         WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
         ORDER BY id ASC
     """, (my_id, username, username, my_id))
@@ -332,7 +338,7 @@ def create_group():
         try:
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
             row = cur.fetchone()
-            room_id = row.get('id') if isinstance(row, dict) else row[0]
+            room_id = row['id'] if isinstance(row, dict) else row[0]
                 
             cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, user))
             
@@ -362,7 +368,7 @@ def create_group():
         user_list = cur.fetchall()
         cur.close()
         conn.close()
-    except Exception as e:
+    except Exception:
         cur.close()
         conn.close()
         user_list = []
@@ -399,7 +405,7 @@ def group_chat(room_id):
     cur.execute("SELECT room_name FROM chat_rooms WHERE id = %s", (room_id,))
     room = cur.fetchone()
         
-    cur.execute("SELECT sender, message, created_at FROM room_messages WHERE room_id = %s ORDER BY id ASC", (room_id,))
+    cur.execute("SELECT id, sender, message, created_at FROM room_messages WHERE room_id = %s ORDER BY id ASC", (room_id,))
     messages = cur.fetchall()
         
     cur.close()
@@ -418,35 +424,33 @@ def search():
         cur.close()
         conn.close()
     return render_template('search_results.html', query=query, results=results)
+
 @app.route('/my_chats')
 def my_joined_rooms():
-    current_user_id = session.get('user_id')
+    current_user = session.get('user')
     
-    if not current_user_id:
+    if not current_user:
         flash("로그인이 필요한 서비스입니다.")
         return redirect('/login')
         
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 💡 핵심 SQL: 내가 참여(room_members)한 방들의 상세 정보(chat_rooms)를 결합해서 가져옵니다.
-    # 방장 ID(creator_id)도 같이 가져와서 내가 방장인 방은 따로 표시할 수 있게 합니다.
     cur.execute("""
-        SELECT r.id, r.title, r.creator_id, 
+        SELECT r.id, r.room_name, r.created_by, 
                (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) as member_count
         FROM chat_rooms r
         JOIN room_members m ON r.id = m.room_id
         WHERE m.user_id = %s
         ORDER BY r.id DESC
-    """, (current_user_id,))
+    """, (current_user,))
     
     my_rooms = cur.fetchall()
-    
     cur.close()
     conn.close()
     
-    # 내일 완성할 HTML 파일로 데이터를 넘겨줍니다.
-    return render_template('my_chats.html', rooms=my_rooms, current_user_id=int(current_user_id))
+    return render_template('my_chats.html', rooms=my_rooms, current_user=current_user)
+
 @app.route('/user/<username>')
 def user_profile(username):
     conn = get_db_connection()
@@ -462,7 +466,7 @@ def user_profile(username):
     if session.get('user') == username:
         cur.execute("UPDATE ask_messages SET is_read = TRUE WHERE target_user = %s", (username,))
         conn.commit()
-
+        
     cur.execute("SELECT COUNT(*) AS cnt FROM follows WHERE following = %s", (username,))
     followers_count = cur.fetchone()['cnt']
     
@@ -492,7 +496,7 @@ def update_profile():
             if not os.path.exists('static'): os.makedirs('static')
             profile_img.save(os.path.join('static', filename))
             cur.execute("UPDATE users SET bio = %s, profile_img = %s WHERE username = %s", (bio, filename, user))
-        except:
+        except Exception:
             cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
     else:
         cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
@@ -569,12 +573,10 @@ def leave_group(room_id):
         
         system_msg = f"📢 {nickname}(@{user})님이 퇴장하셨습니다."
         cur.execute("INSERT INTO room_messages (room_id, sender, message) VALUES (%s, %s, %s)", (room_id, user, system_msg))
-        
         cur.execute("DELETE FROM room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         
         if room_info and room_info['created_by'] == user:
             cur.execute("UPDATE chat_rooms SET created_by = NULL WHERE id = %s", (room_id,))
-
         conn.commit()
         cur.close()
         conn.close()
@@ -589,7 +591,6 @@ def leave_group(room_id):
 # ----------------------------------------------------------------
 # 🌿 오픈채팅 기능 라우팅
 # ----------------------------------------------------------------
-
 @app.route('/open_chat_list')
 def open_chat_list():
     user = session.get('user')
@@ -794,41 +795,26 @@ def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 회원 목록 조회 (딕셔너리/튜플 형태 둘 다 안전하게 대응)
     try:
-        cur.execute("SELECT username, nickname FROM users ORDER BY username ASC")
-        rows = cur.fetchall()
-        for r in rows:
-            # 딕셔너리 형태일 때와 튜플 형태일 때를 모두 방어
-            u_name = r.get('username') if isinstance(r, dict) else r[0]
-            n_name = r.get('nickname') if isinstance(r, dict) else r[1]
-            
-            all_users.append({
-                'username': u_name,
-                'nickname': n_name,
-                'bio': '',
-                'is_active': True
-            })
+        cur.execute("SELECT username, nickname, is_active FROM users ORDER BY username ASC")
+        all_users = cur.fetchall()
     except Exception as e:
         conn.rollback()
         print(f"User Error: {e}")
-
-    # 2. 비밀 단톡방 조회 (실제 있는 chat_rooms 테이블 조회)
+        
     try:
-        cur.execute("SELECT id, room_name FROM chat_rooms ORDER BY id DESC")
-        rows = cur.fetchall()
-        for r in rows:
-            r_id = r.get('id') if isinstance(r, dict) else r[0]
-            r_name = r.get('room_name') if isinstance(r, dict) else r[1]
-            
-            group_rooms.append({
-                'id': r_id,
-                'room_name': r_name,
-                'created_by': 'admin'
-            })
+        cur.execute("SELECT id, room_name, created_by FROM chat_rooms ORDER BY id DESC")
+        group_rooms = cur.fetchall()
     except Exception as e:
         conn.rollback()
         print(f"Group Room Error: {e}")
+
+    try:
+        cur.execute("SELECT id, title, created_by FROM open_rooms ORDER BY id DESC")
+        open_rooms = cur.fetchall()
+    except Exception as e:
+        conn.rollback()
+        print(f"Open Room Error: {e}")
         
     cur.close()
     conn.close()
@@ -839,6 +825,7 @@ def admin_dashboard():
                            group_rooms=group_rooms, 
                            user=user, 
                            role=role)
+
 @app.route('/admin/ban_user/<username>', methods=['POST'])
 def admin_ban_user(username):
     if session.get('user') != 'admin':
@@ -894,8 +881,6 @@ def delete_open_room(room_id):
         cur.close()
         conn.close()
         return "삭제 권한이 없습니다.", 403
-# 파일 맨 아래에 기존 내용을 지우지 말고 그냥 추가로 붙여넣으세요!
-from flask import jsonify, session
 
 @app.route('/delete_chat_message/<string:chat_type>/<int:message_id>', methods=['POST'])
 def delete_message(chat_type, message_id):
@@ -908,40 +893,34 @@ def delete_message(chat_type, message_id):
     cur = conn.cursor()
     
     try:
-        # 1. 오픈채팅 메시지 삭제 로직
         if chat_type == 'open':
             cur.execute("SELECT sender_real_id, room_id FROM open_messages WHERE id = %s", (message_id,))
             msg = cur.fetchone()
             if not msg:
                 return jsonify({"success": False, "message": "존재하지 않는 메시지입니다."}), 404
                 
-            msg_sender = msg['sender_real_id'] if isinstance(msg, dict) else msg[0]
-            room_id = msg['room_id'] if isinstance(msg, dict) else msg[1]
+            msg_sender = msg['sender_real_id']
+            room_id = msg['room_id']
             
-            # 방장 조회
-            cur.execute("SELECT created_by FROM chat_rooms WHERE id = %s", (room_id,))
+            cur.execute("SELECT created_by FROM open_rooms WHERE id = %s", (room_id,))
             room = cur.fetchone()
-            room_owner = room['created_by'] if isinstance(room, dict) else (room[0] if room else None)
+            room_owner = room['created_by'] if room else None
             
-            # 👑 권한 체크 (최고관리자, 오픈챗 방장, 본인)
             if user == 'admin' or user == room_owner or user == msg_sender:
                 cur.execute("DELETE FROM open_messages WHERE id = %s", (message_id,))
                 conn.commit()
                 return jsonify({"success": True, "message": "오픈채팅 메시지가 삭제되었습니다."})
                 
-        # 2. 일반채팅(DM) 메시지 삭제 로직
         elif chat_type == 'general':
-            # 일반채팅 테이블명과 컬럼명(sender_id 등)은 본인의 DB 구조에 맞게 수정될 수 있습니다.
-            cur.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
+            cur.execute("SELECT sender FROM direct_messages WHERE id = %s", (message_id,))
             msg = cur.fetchone()
             if not msg:
                 return jsonify({"success": False, "message": "존재하지 않는 메시지입니다."}), 404
                 
-            msg_sender = msg['sender_id'] if isinstance(msg, dict) else msg[0]
+            msg_sender = msg['sender']
             
-            # 👑 권한 체크 (최고관리자, 본인 - 일반 DM은 방장이 없으므로 본인과 최고관리자만 가능)
             if user == 'admin' or user == msg_sender:
-                cur.execute("DELETE FROM messages WHERE id = %s", (message_id,))
+                cur.execute("DELETE FROM direct_messages WHERE id = %s", (message_id,))
                 conn.commit()
                 return jsonify({"success": True, "message": "일반채팅 메시지가 삭제되었습니다."})
                 
@@ -953,6 +932,7 @@ def delete_message(chat_type, message_id):
     finally:
         cur.close()
         conn.close()
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
