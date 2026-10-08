@@ -170,7 +170,6 @@ def index():
             my_rooms = cur.fetchall()
         except Exception as e:
             conn.rollback()
-            print(f"Group Room Query Error: {e}")
 
         # 2. 내 팔로잉 목록
         try:
@@ -185,28 +184,29 @@ def index():
             all_users = cur.fetchall()
         except Exception as e:
             conn.rollback()
-            print(f"Follow List Query Error: {e}")
 
-        # 3. 1:1 대화방 & 안 읽은 메세지 목록 (에러 방지 쿼리)
+        # 3. 🔥 핵심: 팔로우 여부와 관계없이 나와 메시지를 주고받은 상대방 추출
         try:
             cur.execute("""
-                SELECT 
-                    partner.username,
-                    partner.nickname,
-                    CASE WHEN f.column_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_following,
-                    COALESCE(SUM(CASE WHEN dm.receiver = %s AND dm.is_read = FALSE THEN 1 ELSE 0 END), 0) AS unread_count,
-                    MAX(dm.created_at) AS last_msg_time
-                FROM (
+                WITH partners AS (
                     SELECT sender AS partner_id FROM direct_messages WHERE receiver = %s
                     UNION
                     SELECT receiver AS partner_id FROM direct_messages WHERE sender = %s
-                ) sub
-                JOIN users partner ON partner.username = sub.partner_id AND partner.is_active = TRUE
-                LEFT JOIN direct_messages dm 
-                       ON (dm.sender = partner.username AND dm.receiver = %s) 
-                       OR (dm.sender = %s AND dm.receiver = partner.username)
-                LEFT JOIN follows f ON f.follower = %s AND f.following = partner.username
-                GROUP BY partner.username, partner.nickname, f.column_id
+                )
+                SELECT 
+                    u.username,
+                    u.nickname,
+                    CASE WHEN f.column_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_following,
+                    COALESCE(
+                        (SELECT COUNT(*) FROM direct_messages 
+                         WHERE sender = u.username AND receiver = %s AND is_read = FALSE), 0
+                    ) AS unread_count,
+                    (SELECT MAX(created_at) FROM direct_messages 
+                     WHERE (sender = %s AND receiver = u.username) OR (sender = u.username AND receiver = %s)
+                    ) AS last_msg_time
+                FROM partners p
+                JOIN users u ON p.partner_id = u.username AND u.is_active = TRUE
+                LEFT JOIN follows f ON f.follower = %s AND f.following = u.username
                 ORDER BY unread_count DESC, last_msg_time DESC;
             """, (user, user, user, user, user, user))
             dm_list = cur.fetchall()
