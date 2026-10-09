@@ -157,7 +157,7 @@ def index():
     cur = conn.cursor()
     
     if user:
-        # 1. 내가 속한 단톡방 목록
+        # 1. 일반 단톡방 목록
         try:
             query_rooms = """
                 SELECT DISTINCT cr.id, cr.room_name 
@@ -185,7 +185,7 @@ def index():
         except Exception as e:
             conn.rollback()
 
-        # 3. 🔥 핵심: 팔로우 여부와 관계없이 나와 메시지를 주고받은 상대방 추출
+        # 3. 1:1 대화 및 미팔로우 선톡 목록 (핵심 쿼리)
         try:
             cur.execute("""
                 WITH partners AS (
@@ -227,6 +227,7 @@ def index():
                            dm_list=dm_list, 
                            unread_total=unread_total, 
                            user=user)
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
