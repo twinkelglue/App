@@ -191,6 +191,9 @@ init_db()
 # --- 인증 라우트 (회원가입 및 로그인 수정 완료) ---
 
 @app.route('/register', methods=['GET', 'POST'])
+# --- 인증 라우트 (최종 수정) ---
+
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -200,29 +203,41 @@ def register():
         if not username or not password or not nickname:
             return "<script>alert('모든 필드를 입력해 주세요.'); history.back();</script>", 400
 
-        conn = get_db_connection()
+        # DB 연결 (기본 튜플 커서 사용)
+        db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/postgres')
+        conn = psycopg2.connect(db_url)
         cur = conn.cursor()
+
         try:
-            # 대소문자 및 공백 무시한 중복검사
+            # 1. 중복 아이디 확인
             cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
-            if cur.fetchone():
+            row = cur.fetchone()
+
+            if row is not None:
+                cur.close()
+                conn.close()
                 return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
 
+            # 2. 신규 회원가입
             hashed_pw = generate_password_hash(password)
             cur.execute("""
                 INSERT INTO users (username, password, nickname, bio, profile_img, is_active, last_seen) 
                 VALUES (%s, %s, %s, '안녕하세요!', 'default.png', TRUE, %s)
             """, (username, hashed_pw, nickname, get_kst_now()))
+            
             conn.commit()
-            return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
-        except Exception as e:
-            conn.rollback()
-            return f"<script>alert('회원가입 중 오류 발생: {str(e)}'); history.back();</script>", 500
-        finally:
             cur.close()
             conn.close()
+            return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
+
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return f"<script>alert('회원가입 오류: {str(e)}'); history.back();</script>", 500
 
     return render_template('register.html')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -233,31 +248,40 @@ def login():
         if not username or not password:
             return "<script>alert('아이디와 비밀번호를 입력해 주세요.'); history.back();</script>", 400
 
-        conn = get_db_connection()
+        # DB 연결 (기본 튜플 커서 사용)
+        db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/postgres')
+        conn = psycopg2.connect(db_url)
         cur = conn.cursor()
+
         try:
-            cur.execute("SELECT username, password, nickname FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (username,))
+            cur.execute("SELECT username, password FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (username,))
             user_row = cur.fetchone()
 
-            if user_row:
-                real_pw = user_row['password'] if isinstance(user_row, dict) else user_row[1]
-                real_username = user_row['username'] if isinstance(user_row, dict) else user_row[0]
+            if user_row is not None:
+                db_username = user_row[0]
+                db_password = user_row[1]
 
-                if check_password_hash(real_pw, password):
-                    session['user'] = real_username
-                    cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), real_username))
+                # 비밀번호 검증
+                if check_password_hash(db_password, password):
+                    session['user'] = db_username
+                    cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), db_username))
                     conn.commit()
+                    cur.close()
+                    conn.close()
                     return redirect(url_for('index'))
 
-            return "<script>alert('아이디 또는 비밀번호가 올바르지 않습니다.'); history.back();</script>", 400
-        except Exception as e:
-            conn.rollback()
-            return f"<script>alert('로그인 오류: {str(e)}'); history.back();</script>", 500
-        finally:
             cur.close()
             conn.close()
+            return "<script>alert('아이디 또는 비밀번호가 올바르지 않습니다.'); history.back();</script>", 400
+
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return f"<script>alert('로그인 오류: {str(e)}'); history.back();</script>", 500
 
     return render_template('login.html')
+
 
 @app.route('/logout')
 def logout():
