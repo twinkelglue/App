@@ -189,7 +189,6 @@ def init_db():
 init_db()
 
 # --- 인증 라우트 ---
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -203,13 +202,16 @@ def register():
         conn = get_db_connection()
         cur = conn.cursor()
         try:
+            # 대소문자 구분 없이 아이디 중복 체크
             cur.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
             if cur.fetchone():
                 return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
 
             hashed_pw = generate_password_hash(password)
-            cur.execute("INSERT INTO users (username, password, nickname, last_seen) VALUES (%s, %s, %s, %s)",
-                        (username, hashed_pw, nickname, get_kst_now()))
+            cur.execute("""
+                INSERT INTO users (username, password, nickname, last_seen) 
+                VALUES (%s, %s, %s, %s)
+            """, (username, hashed_pw, nickname, get_kst_now()))
             conn.commit()
         except Exception as e:
             conn.rollback()
@@ -218,8 +220,9 @@ def register():
             cur.close()
             conn.close()
 
-        return redirect(url_for('login'))
+        return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
     return render_template('register.html')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -227,16 +230,27 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
 
+        if not username or not password:
+            return "<script>alert('아이디와 비밀번호를 모두 입력해 주세요.'); history.back();</script>", 400
+
         conn = get_db_connection()
         cur = conn.cursor()
         try:
+            # 아이디 대소문자 무시 조회
             cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (username,))
             user_row = cur.fetchone()
 
             if user_row:
-                user_pw = safe_get(user_row, 'password', index=1)
-                real_username = safe_get(user_row, 'username', index=0)
-                if check_password_hash(user_pw, password):
+                # RealDictCursor 및 Tuple 호환 비밀번호 추출
+                if isinstance(user_row, dict):
+                    user_pw = user_row.get('password')
+                    real_username = user_row.get('username')
+                else:
+                    user_pw = user_row[1]
+                    real_username = user_row[0]
+
+                # 비밀번호 검증
+                if user_pw and check_password_hash(user_pw, password):
                     session['user'] = real_username
                     cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), real_username))
                     conn.commit()
@@ -251,6 +265,7 @@ def login():
             conn.close()
             
     return render_template('login.html')
+
 
 @app.route('/logout')
 def logout():
