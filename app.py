@@ -224,6 +224,47 @@ def register():
     return render_template('register.html')
 
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        nickname = request.form.get('nickname', '').strip()
+
+        if not username or not password or not nickname:
+            return "<script>alert('모든 필드를 입력해 주세요.'); history.back();</script>", 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            # 1. 중복 아이디 정확히 검사
+            cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
+            existing_user = cur.fetchone()
+
+            if existing_user:
+                return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
+
+            # 2. 신규 회원가입 처리
+            hashed_pw = generate_password_hash(password)
+            cur.execute("""
+                INSERT INTO users (username, password, nickname, bio, profile_img, is_active, last_seen) 
+                VALUES (%s, %s, %s, '안녕하세요!', 'default.png', TRUE, %s)
+            """, (username, hashed_pw, nickname, get_kst_now()))
+            
+            conn.commit()
+            return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
+
+        except Exception as e:
+            conn.rollback()
+            # DB 트랜잭션 오류 시 상세 원인 출력
+            return f"<script>alert('회원가입 처리 중 DB 오류: {str(e)}'); history.back();</script>", 500
+        finally:
+            cur.close()
+            conn.close()
+
+    return render_template('register.html')
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -231,26 +272,20 @@ def login():
         password = request.form.get('password', '').strip()
 
         if not username or not password:
-            return "<script>alert('아이디와 비밀번호를 모두 입력해 주세요.'); history.back();</script>", 400
+            return "<script>alert('아이디와 비밀번호를 입력해 주세요.'); history.back();</script>", 400
 
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            # 아이디 대소문자 무시 조회
-            cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (username,))
+            cur.execute("SELECT username, password, nickname FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (username,))
             user_row = cur.fetchone()
 
             if user_row:
-                # RealDictCursor 및 Tuple 호환 비밀번호 추출
-                if isinstance(user_row, dict):
-                    user_pw = user_row.get('password')
-                    real_username = user_row.get('username')
-                else:
-                    user_pw = user_row[1]
-                    real_username = user_row[0]
+                # DictCursor와 Tuple 방식 모두 안전하게 처리
+                real_pw = user_row['password'] if isinstance(user_row, dict) else user_row[1]
+                real_username = user_row['username'] if isinstance(user_row, dict) else user_row[0]
 
-                # 비밀번호 검증
-                if user_pw and check_password_hash(user_pw, password):
+                if check_password_hash(real_pw, password):
                     session['user'] = real_username
                     cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), real_username))
                     conn.commit()
@@ -259,12 +294,13 @@ def login():
             return "<script>alert('아이디 또는 비밀번호가 올바르지 않습니다.'); history.back();</script>", 400
         except Exception as e:
             conn.rollback()
-            return f"<script>alert('로그인 처리 중 오류 발생: {str(e)}'); history.back();</script>", 500
+            return f"<script>alert('로그인 오류: {str(e)}'); history.back();</script>", 500
         finally:
             cur.close()
             conn.close()
-            
+
     return render_template('login.html')
+
 
 
 @app.route('/logout')
