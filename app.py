@@ -6,43 +6,28 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import psycopg2
-from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_chat_club_key'
 
-# 파일 업로드 저장 디렉토리 설정
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# ⏰ 한국 표준시(KST) 구하는 전역 함수
 def get_kst_now():
     return datetime.now(zoneinfo.ZoneInfo("Asia/Seoul"))
 
-# DB 커넥션 헬퍼
 def get_db_connection():
-    db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/postgres')
-    conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+    db_url = os.environ.get('DATABASE_URL')
+    if not db_url:
+        db_url = 'postgresql://postgres:password@localhost:5432/postgres'
+    conn = psycopg2.connect(db_url)
     return conn
 
-# 안전 가드 헬퍼 함수
-def safe_get(item, key, index=0, default=None):
-    if item is None:
-        return default
-    if isinstance(item, dict):
-        return item.get(key, default)
-    try:
-        return item[index]
-    except (IndexError, TypeError):
-        return default
-
-# 데이터베이스 테이블 및 컬럼 초기화
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # 1. 유저 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username VARCHAR(50) PRIMARY KEY,
@@ -63,7 +48,6 @@ def init_db():
     except Exception:
         conn.rollback()
 
-    # 2. 팔로우 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS follows (
             id SERIAL PRIMARY KEY,
@@ -74,7 +58,6 @@ def init_db():
         );
     """)
 
-    # 3. 1:1 메시지 (DM) 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS direct_messages (
             id SERIAL PRIMARY KEY,
@@ -86,7 +69,6 @@ def init_db():
         );
     """)
 
-    # 4. 단톡방 & 멤버 & 메시지 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chat_rooms (
             id SERIAL PRIMARY KEY,
@@ -107,7 +89,6 @@ def init_db():
         );
     """)
 
-    # 5. 오픈채팅방, 멤버/권한, 메시지, 강퇴(차단) 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_rooms (
             id SERIAL PRIMARY KEY,
@@ -147,7 +128,6 @@ def init_db():
     except Exception:
         conn.rollback()
 
-    # 6. [커뮤니티] 1:1 익명 메시지 (에스크)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ask_messages (
             id SERIAL PRIMARY KEY,
@@ -158,7 +138,6 @@ def init_db():
         );
     """)
 
-    # 7. [커뮤니티] 생각 클라우드
     cur.execute("""
         CREATE TABLE IF NOT EXISTS community_posts (
             id SERIAL PRIMARY KEY,
@@ -188,11 +167,6 @@ def init_db():
 
 init_db()
 
-# --- 인증 라우트 (회원가입 및 로그인 수정 완료) ---
-
-@app.route('/register', methods=['GET', 'POST'])
-# --- 인증 라우트 (최종 수정) ---
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -203,22 +177,16 @@ def register():
         if not username or not password or not nickname:
             return "<script>alert('모든 필드를 입력해 주세요.'); history.back();</script>", 400
 
-        # DB 연결 (기본 튜플 커서 사용)
-        db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/postgres')
-        conn = psycopg2.connect(db_url)
-        cur = conn.cursor()
-
         try:
-            # 1. 중복 아이디 확인
-            cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
-            row = cur.fetchone()
+            conn = get_db_connection()
+            cur = conn.cursor()
 
-            if row is not None:
+            cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
+            if cur.fetchone() is not None:
                 cur.close()
                 conn.close()
                 return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
 
-            # 2. 신규 회원가입
             hashed_pw = generate_password_hash(password)
             cur.execute("""
                 INSERT INTO users (username, password, nickname, bio, profile_img, is_active, last_seen) 
@@ -231,13 +199,9 @@ def register():
             return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
 
         except Exception as e:
-            conn.rollback()
-            cur.close()
-            conn.close()
-            return f"<script>alert('회원가입 오류: {str(e)}'); history.back();</script>", 500
+            return f"<script>alert('회원가입 처리 실패: {str(e)}'); history.back();</script>", 500
 
     return render_template('register.html')
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -248,23 +212,20 @@ def login():
         if not username or not password:
             return "<script>alert('아이디와 비밀번호를 입력해 주세요.'); history.back();</script>", 400
 
-        # DB 연결 (기본 튜플 커서 사용)
-        db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/postgres')
-        conn = psycopg2.connect(db_url)
-        cur = conn.cursor()
-
         try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+
             cur.execute("SELECT username, password FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (username,))
             user_row = cur.fetchone()
 
             if user_row is not None:
-                db_username = user_row[0]
-                db_password = user_row[1]
+                real_username = user_row[0]
+                real_password = user_row[1]
 
-                # 비밀번호 검증
-                if check_password_hash(db_password, password):
-                    session['user'] = db_username
-                    cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), db_username))
+                if check_password_hash(real_password, password):
+                    session['user'] = real_username
+                    cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), real_username))
                     conn.commit()
                     cur.close()
                     conn.close()
@@ -275,20 +236,14 @@ def login():
             return "<script>alert('아이디 또는 비밀번호가 올바르지 않습니다.'); history.back();</script>", 400
 
         except Exception as e:
-            conn.rollback()
-            cur.close()
-            conn.close()
-            return f"<script>alert('로그인 오류: {str(e)}'); history.back();</script>", 500
+            return f"<script>alert('로그인 처리 실패: {str(e)}'); history.back();</script>", 500
 
     return render_template('login.html')
-
 
 @app.route('/logout')
 def logout():
     session.pop('user', None)
     return redirect(url_for('login'))
-
-# --- 메인 대시보드 ---
 
 @app.route('/')
 def index():
@@ -306,10 +261,16 @@ def index():
 
     try:
         cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), user))
-        cur.execute("SELECT * FROM users WHERE username = %s", (user,))
-        current_user_info = cur.fetchone()
+        cur.execute("SELECT username, nickname, bio, profile_img FROM users WHERE username = %s", (user,))
+        user_data = cur.fetchone()
+        if user_data:
+            current_user_info = {
+                'username': user_data[0],
+                'nickname': user_data[1],
+                'bio': user_data[2],
+                'profile_img': user_data[3]
+            }
 
-        # 1. 내가 속한 단톡방 목록
         try:
             cur.execute("""
                 SELECT DISTINCT cr.id, cr.room_name 
@@ -318,18 +279,16 @@ def index():
                 WHERE cr.created_by = %s OR rm.user_id = %s
                 ORDER BY cr.id DESC
             """, (user, user))
-            my_rooms = cur.fetchall()
+            my_rooms = [{'id': r[0], 'room_name': r[1]} for r in cur.fetchall()]
         except Exception:
             conn.rollback()
 
-        # 2. 전체 오픈채팅방 목록
         try:
             cur.execute("SELECT id, room_name FROM open_rooms ORDER BY id DESC")
-            open_rooms = cur.fetchall()
+            open_rooms = [{'id': r[0], 'room_name': r[1]} for r in cur.fetchall()]
         except Exception:
             conn.rollback()
 
-        # 3. 내 팔로우 친구 목록
         try:
             cur.execute("""
                 SELECT u.username, u.nickname, u.profile_img,
@@ -339,11 +298,12 @@ def index():
                 WHERE f.follower = %s AND u.is_active = TRUE
                 ORDER BY is_online DESC, u.nickname ASC
             """, (user,))
-            all_users = cur.fetchall()
+            all_users = [{
+                'username': u[0], 'nickname': u[1], 'profile_img': u[2], 'is_online': u[3]
+            } for u in cur.fetchall()]
         except Exception:
             conn.rollback()
 
-        # 4. 모든 1:1 대화 내역 목록 조회 (팔로우 여부 상관없이 전체)
         try:
             cur.execute("""
                 WITH partners AS (
@@ -365,20 +325,21 @@ def index():
             raw_dm_list = cur.fetchall()
             dm_list = []
             for item in raw_dm_list:
-                un_cnt = safe_get(item, 'unread_count', index=4, default=0)
-                unread_total += int(un_cnt or 0)
-                dm_list.append(item)
+                un_cnt = item[4] or 0
+                unread_total += int(un_cnt)
+                dm_list.append({
+                    'username': item[0], 'nickname': item[1], 'profile_img': item[2],
+                    'is_following': item[3], 'unread_count': un_cnt, 'last_msg_time': item[5], 'last_msg': item[6]
+                })
         except Exception:
             conn.rollback()
 
-        # 5. [커뮤니티] 나에게 온 익명 메시지
         try:
             cur.execute("SELECT id, content, created_at FROM ask_messages WHERE target_user = %s ORDER BY id DESC", (user,))
-            my_asks = cur.fetchall()
+            my_asks = [{'id': a[0], 'content': a[1], 'created_at': a[2]} for a in cur.fetchall()]
         except Exception:
             conn.rollback()
 
-        # 6. [커뮤니티] 생각 클라우드 목록
         try:
             cur.execute("""
                 SELECT 
@@ -392,14 +353,14 @@ def index():
             posts = cur.fetchall()
             community_posts = []
             for p in posts:
-                post_id = safe_get(p, 'id', index=0)
+                post_id = p[0]
                 cur.execute("SELECT comment, created_at FROM community_comments WHERE post_id = %s ORDER BY id ASC", (post_id,))
-                p_dict = dict(p) if isinstance(p, dict) else {
+                comments_data = [{'comment': c[0], 'created_at': c[1]} for c in cur.fetchall()]
+                community_posts.append({
                     'id': p[0], 'content': p[1], 'image_url': p[2], 'created_at': p[3],
-                    'like_count': p[4], 'is_liked': p[5], 'comment_count': p[6]
-                }
-                p_dict['comments'] = cur.fetchall()
-                community_posts.append(p_dict)
+                    'like_count': p[4], 'is_liked': p[5], 'comment_count': p[6],
+                    'comments': comments_data
+                })
         except Exception:
             conn.rollback()
 
@@ -420,8 +381,6 @@ def index():
                            unread_total=unread_total,
                            my_asks=my_asks, 
                            community_posts=community_posts)
-
-# --- 프로필 및 팔로우 라우트 ---
 
 @app.route('/profile/update', methods=['POST'])
 def update_profile():
@@ -476,10 +435,12 @@ def follow_by_search():
         target_user = cur.fetchone()
 
         if not target_user:
+            cur.close()
+            conn.close()
             return "<script>alert('존재하지 않는 아이디입니다.'); history.back();</script>", 400
 
-        real_target_username = safe_get(target_user, 'username', index=0)
-        nickname = safe_get(target_user, 'nickname', index=1)
+        real_target_username = target_user[0]
+        nickname = target_user[1]
 
         cur.execute("""
             INSERT INTO follows (follower, following, created_at) 
@@ -518,8 +479,6 @@ def follow_user(username):
         
     return jsonify({"success": success})
 
-# --- 1:1 대화방 (DM) ---
-
 @app.route('/dm/<username>')
 def dm_chat(username):
     user = session.get('user')
@@ -531,14 +490,15 @@ def dm_chat(username):
 
     try:
         cur.execute("SELECT username, nickname, profile_img FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
-        partner = cur.fetchone()
+        partner_row = cur.fetchone()
 
-        if not partner:
+        if not partner_row:
             cur.close()
             conn.close()
             return "<script>alert('존재하지 않는 유저입니다.'); history.back();</script>", 404
 
-        real_partner_name = safe_get(partner, 'username', index=0)
+        partner = {'username': partner_row[0], 'nickname': partner_row[1], 'profile_img': partner_row[2]}
+        real_partner_name = partner['username']
 
         cur.execute("SELECT id FROM follows WHERE follower = %s AND following = %s", (user, real_partner_name))
         is_following = cur.fetchone() is not None
@@ -552,7 +512,7 @@ def dm_chat(username):
             WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
             ORDER BY id ASC
         """, (user, real_partner_name, real_partner_name, user))
-        messages = cur.fetchall()
+        messages = [{'id': m[0], 'sender': m[1], 'receiver': m[2], 'message': m[3], 'created_at': m[4]} for m in cur.fetchall()]
 
     except Exception as e:
         conn.rollback()
@@ -605,8 +565,6 @@ def delete_dm_message(msg_id):
         
     return jsonify({"success": success})
 
-# --- 오픈채팅방 관리 및 사진/안 읽은 수 계산 API ---
-
 @app.route('/open_chat/create', methods=['POST'])
 def create_open_room():
     user = session.get('user')
@@ -621,7 +579,7 @@ def create_open_room():
             cur.execute("INSERT INTO open_rooms (room_name, created_by, created_at) VALUES (%s, %s, %s) RETURNING id",
                         (room_name, user, get_kst_now()))
             res = cur.fetchone()
-            room_id = safe_get(res, 'id', index=0)
+            room_id = res[0]
             
             cur.execute("INSERT INTO open_room_members (room_id, user_id, role, last_read_at) VALUES (%s, %s, 'owner', %s)", (room_id, user, get_kst_now()))
             conn.commit()
@@ -650,15 +608,16 @@ def open_chat(room_id):
             conn.close()
             return "<script>alert('강퇴된 오픈채팅방입니다.'); location.href='/';</script>", 403
 
-        cur.execute("SELECT * FROM open_rooms WHERE id = %s", (room_id,))
-        room = cur.fetchone()
+        cur.execute("SELECT id, room_name, created_by FROM open_rooms WHERE id = %s", (room_id,))
+        room_row = cur.fetchone()
 
-        if not room:
+        if not room_row:
             cur.close()
             conn.close()
             return "<script>alert('존재하지 않는 방입니다.'); history.back();</script>", 404
 
-        room_owner = safe_get(room, 'created_by', index=2)
+        room = {'id': room_row[0], 'room_name': room_row[1], 'created_by': room_row[2]}
+        room_owner = room['created_by']
         my_role = 'owner' if room_owner == user else 'member'
         
         cur.execute("""
@@ -671,7 +630,7 @@ def open_chat(room_id):
 
         cur.execute("SELECT role FROM open_room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         role_res = cur.fetchone()
-        current_role = safe_get(role_res, 'role', index=0, default='member')
+        current_role = role_res[0] if role_res else 'member'
 
         cur.execute("""
             SELECT m.user_id, m.role, u.nickname, u.profile_img
@@ -680,7 +639,7 @@ def open_chat(room_id):
             WHERE m.room_id = %s
             ORDER BY CASE WHEN m.role = 'owner' THEN 1 WHEN m.role = 'sub_owner' THEN 2 ELSE 3 END, u.nickname ASC
         """, (room_id,))
-        members = cur.fetchall()
+        members = [{'user_id': m[0], 'role': m[1], 'nickname': m[2], 'profile_img': m[3]} for m in cur.fetchall()]
         total_member_cnt = len(members)
 
         cur.execute("""
@@ -695,7 +654,10 @@ def open_chat(room_id):
             WHERE om.room_id = %s 
             ORDER BY om.id ASC
         """, (total_member_cnt, room_id, room_id))
-        messages = cur.fetchall()
+        messages = [{
+            'id': msg[0], 'sender_anon': msg[1], 'sender_real_id': msg[2],
+            'message': msg[3], 'image_url': msg[4], 'created_at': msg[5], 'unread_cnt': msg[6]
+        } for msg in cur.fetchall()]
 
     except Exception as e:
         conn.rollback()
@@ -763,7 +725,7 @@ def set_open_member_role(room_id):
     try:
         cur.execute("SELECT role FROM open_room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         res = cur.fetchone()
-        my_role = safe_get(res, 'role', index=0)
+        my_role = res[0] if res else None
 
         if my_role != 'owner':
             return jsonify({"success": False, "message": "방장 전용"}), 403
@@ -790,7 +752,7 @@ def kick_open_member(room_id):
     try:
         cur.execute("SELECT role FROM open_room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         res = cur.fetchone()
-        my_role = safe_get(res, 'role', index=0)
+        my_role = res[0] if res else None
 
         if my_role not in ['owner', 'sub_owner']:
             return jsonify({"success": False, "message": "권한 없음"}), 403
@@ -806,8 +768,6 @@ def kick_open_member(room_id):
         cur.close()
         conn.close()
 
-# --- 비밀 단톡방 / 커뮤니티 라우트 ---
-
 @app.route('/group/create', methods=['POST'])
 def create_group_room():
     user = session.get('user')
@@ -819,7 +779,7 @@ def create_group_room():
         try:
             cur.execute("INSERT INTO chat_rooms (room_name, created_by) VALUES (%s, %s) RETURNING id", (room_name, user))
             res = cur.fetchone()
-            room_id = safe_get(res, 'id', index=0)
+            room_id = res[0]
             cur.execute("INSERT INTO room_members (room_id, user_id) VALUES (%s, %s)", (room_id, user))
             conn.commit()
             return redirect(url_for('group_chat', room_id=room_id))
@@ -838,15 +798,19 @@ def group_chat(room_id):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT * FROM chat_rooms WHERE id = %s", (room_id,))
-        room = cur.fetchone()
+        cur.execute("SELECT id, room_name FROM chat_rooms WHERE id = %s", (room_id,))
+        r = cur.fetchone()
+        room = {'id': r[0], 'room_name': r[1]} if r else None
+        
         cur.execute("""
             SELECT rm.id, rm.sender, rm.message, rm.created_at, u.nickname 
             FROM room_messages rm
             LEFT JOIN users u ON rm.sender = u.username
             WHERE rm.room_id = %s ORDER BY rm.id ASC
         """, (room_id,))
-        messages = cur.fetchall()
+        messages = [{
+            'id': m[0], 'sender': m[1], 'message': m[2], 'created_at': m[3], 'nickname': m[4]
+        } for m in cur.fetchall()]
     except Exception as e:
         conn.rollback()
         return f"<script>alert('단톡방 로딩 오류: {str(e)}'); history.back();</script>", 500
@@ -887,7 +851,7 @@ def send_anonymous_ask():
             cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (target_id,))
             target_row = cur.fetchone()
             if target_row:
-                real_target_id = safe_get(target_row, 'username', index=0)
+                real_target_id = target_row[0]
                 cur.execute("INSERT INTO ask_messages (target_user, sender_id, content, created_at) VALUES (%s, %s, %s, %s)",
                             (real_target_id, user, content, get_kst_now()))
                 conn.commit()
@@ -942,7 +906,7 @@ def toggle_post_like(post_id):
             is_liked = True
         cur.execute("SELECT COUNT(*) AS cnt FROM community_likes WHERE post_id = %s", (post_id,))
         res = cur.fetchone()
-        cnt = safe_get(res, 'cnt', index=0, default=0)
+        cnt = res[0] if res else 0
         conn.commit()
     except Exception:
         conn.rollback()
