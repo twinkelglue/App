@@ -16,7 +16,7 @@ UPLOAD_FOLDER = os.path.join('static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# ⏰ 한국 표준시(KST) 구해주는 전역 함수
+# ⏰ 한국 표준시(KST) 구하는 전역 함수
 def get_kst_now():
     return datetime.now(zoneinfo.ZoneInfo("Asia/Seoul"))
 
@@ -107,7 +107,7 @@ def init_db():
         );
     """)
 
-    # 5. 오픈채팅방, 멤버/권한, 메시지, 강퇴(차단) 테이블
+    # 5. 오픈채팅방, 멤버/권한, 메시지, 강퇴(차단) 테이블 (사진 및 안 읽은 수 추가)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_rooms (
             id SERIAL PRIMARY KEY,
@@ -121,6 +121,7 @@ def init_db():
             user_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
             role VARCHAR(20) DEFAULT 'member', -- 'owner', 'sub_owner', 'member'
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(room_id, user_id)
         );
         CREATE TABLE IF NOT EXISTS open_room_banned (
@@ -134,10 +135,17 @@ def init_db():
             room_id INT REFERENCES open_rooms(id) ON DELETE CASCADE,
             sender_anon VARCHAR(50) NOT NULL,
             sender_real_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
-            message TEXT NOT NULL,
+            message TEXT,
+            image_url VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    try:
+        cur.execute("ALTER TABLE open_room_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+        cur.execute("ALTER TABLE open_messages ADD COLUMN IF NOT EXISTS image_url VARCHAR(255);")
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
     # 6. [커뮤니티] 1:1 익명 메시지 (에스크)
     cur.execute("""
@@ -205,7 +213,7 @@ def register():
             conn.commit()
         except Exception as e:
             conn.rollback()
-            return f"<script>alert('회원가입 중 오류가 발생했습니다: {str(e)}'); history.back();</script>", 500
+            return f"<script>alert('회원가입 중 오류 발생: {str(e)}'); history.back();</script>", 500
         finally:
             cur.close()
             conn.close()
@@ -303,7 +311,7 @@ def index():
         except Exception:
             conn.rollback()
 
-        # 4. 🔥 [핵심] 팔로우 유무 상관없이 모든 1:1 대화 내역 조회 (채팅 탭 표출용)
+        # 4. 팔로우 유무와 상관없이 모든 1:1 대화 내역 목록 조회 (채팅 탭용)
         try:
             cur.execute("""
                 WITH partners AS (
@@ -541,7 +549,27 @@ def send_dm(username):
             
     return redirect(url_for('dm_chat', username=username))
 
-# --- 오픈채팅방 관리 & 참여자/방장 권한(강퇴, 부방장) API ---
+@app.route('/dm/message/<int:msg_id>/delete', methods=['POST'])
+def delete_dm_message(msg_id):
+    user = session.get('user')
+    if not user: return jsonify({"success": False}), 401
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM direct_messages WHERE id = %s AND sender = %s", (msg_id, user))
+        conn.commit()
+        success = True
+    except Exception:
+        conn.rollback()
+        success = False
+    finally:
+        cur.close()
+        conn.close()
+        
+    return jsonify({"success": success})
+
+# --- 오픈채팅방 관리 및 사진/안 읽은 수 계산 API ---
 
 @app.route('/open_chat/create', methods=['POST'])
 def create_open_room():
@@ -559,8 +587,7 @@ def create_open_room():
             res = cur.fetchone()
             room_id = safe_get(res, 'id', index=0)
             
-            # 방장을 멤버 최고 권한('owner')으로 추가
-            cur.execute("INSERT INTO open_room_members (room_id, user_id, role) VALUES (%s, %s, 'owner')", (room_id, user))
+            cur.execute("INSERT INTO open_room_members (room_id, user_id, role, last_read_at) VALUES (%s, %s, 'owner', %s)", (room_id, user, get_kst_now()))
             conn.commit()
             return redirect(url_for('open_chat', room_id=room_id))
         except Exception as e:
@@ -581,39 +608,37 @@ def open_chat(room_id):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # 1. 강퇴(차단)된 사용자인지 검증
         cur.execute("SELECT id FROM open_room_banned WHERE room_id = %s AND user_id = %s", (room_id, user))
         if cur.fetchone():
             cur.close()
             conn.close()
-            return "<script>alert('방장에 의해 강퇴된 오픈채팅방입니다.'); location.href='/';</script>", 403
+            return "<script>alert('강퇴된 오픈채팅방입니다.'); location.href='/';</script>", 403
 
-        # 2. 방 정보 조회
         cur.execute("SELECT * FROM open_rooms WHERE id = %s", (room_id,))
         room = cur.fetchone()
 
         if not room:
             cur.close()
             conn.close()
-            return "<script>alert('존재하지 않는 오픈채팅방입니다.'); history.back();</script>", 404
+            return "<script>alert('존재하지 않는 방입니다.'); history.back();</script>", 404
 
-        # 3. 참여자로 자동 등록
+        # 참여자 등록 및 읽은 시각 최신화
         room_owner = safe_get(room, 'created_by', index=2)
         my_role = 'owner' if room_owner == user else 'member'
         
         cur.execute("""
-            INSERT INTO open_room_members (room_id, user_id, role) 
-            VALUES (%s, %s, %s) 
-            ON CONFLICT (room_id, user_id) DO NOTHING
-        """, (room_id, user, my_role))
+            INSERT INTO open_room_members (room_id, user_id, role, last_read_at) 
+            VALUES (%s, %s, %s, %s) 
+            ON CONFLICT (room_id, user_id) 
+            DO UPDATE SET last_read_at = %s
+        """, (room_id, user, my_role, get_kst_now(), get_kst_now()))
         conn.commit()
 
-        # 내 권한 확인
         cur.execute("SELECT role FROM open_room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         role_res = cur.fetchone()
         current_role = safe_get(role_res, 'role', index=0, default='member')
 
-        # 4. 전체 참여자 목록 조회
+        # 전체 참여자 목록 & 총 인원 계산
         cur.execute("""
             SELECT m.user_id, m.role, u.nickname, u.profile_img
             FROM open_room_members m
@@ -622,13 +647,21 @@ def open_chat(room_id):
             ORDER BY CASE WHEN m.role = 'owner' THEN 1 WHEN m.role = 'sub_owner' THEN 2 ELSE 3 END, u.nickname ASC
         """, (room_id,))
         members = cur.fetchall()
+        total_member_cnt = len(members)
 
-        # 5. 메시지 목록 조회
+        # 메시지 목록 및 메시지별 안 읽은 사람 수 계산
         cur.execute("""
-            SELECT id, sender_anon, sender_real_id, message, created_at 
-            FROM open_messages 
-            WHERE room_id = %s ORDER BY id ASC
-        """, (room_id,))
+            SELECT 
+                om.id, om.sender_anon, om.sender_real_id, om.message, om.image_url, om.created_at,
+                (%s - (
+                    SELECT COUNT(*) 
+                    FROM open_room_members 
+                    WHERE room_id = %s AND last_read_at >= om.created_at
+                )) AS unread_cnt
+            FROM open_messages om
+            WHERE om.room_id = %s 
+            ORDER BY om.id ASC
+        """, (total_member_cnt, room_id, room_id))
         messages = cur.fetchall()
 
     except Exception as e:
@@ -653,20 +686,29 @@ def send_open_message(room_id):
         
     anon_name = request.form.get('anon_name', '').strip() or '익명'
     msg = request.form.get('message', '').strip()
+    image = request.files.get('image')
+    img_name = None
 
-    if msg:
+    if image and image.filename != '':
+        img_name = f"open_{int(time.time())}_{secure_filename(image.filename)}"
+        image.save(os.path.join(app.config['UPLOAD_FOLDER'], img_name))
+
+    if msg or img_name:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            # 강퇴 검증
             cur.execute("SELECT id FROM open_room_banned WHERE room_id = %s AND user_id = %s", (room_id, user))
             if cur.fetchone():
-                return jsonify({"success": False, "message": "강퇴된 사용자입니다."}), 403
+                return "<script>alert('강퇴된 사용자입니다.'); location.href='/';</script>", 403
 
             cur.execute("""
-                INSERT INTO open_messages (room_id, sender_anon, sender_real_id, message, created_at) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (room_id, anon_name, user, msg, get_kst_now()))
+                INSERT INTO open_messages (room_id, sender_anon, sender_real_id, message, image_url, created_at) 
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (room_id, anon_name, user, msg, img_name, get_kst_now()))
+            
+            # 내가 보낸 시간 기준으로 읽은 시각 업데이트
+            cur.execute("UPDATE open_room_members SET last_read_at = %s WHERE room_id = %s AND user_id = %s", 
+                        (get_kst_now(), room_id, user))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -676,25 +718,23 @@ def send_open_message(room_id):
             
     return redirect(url_for('open_chat', room_id=room_id))
 
-# 🔥 오픈채팅 부방장 임명/해제 API (방장 전용)
 @app.route('/open_chat/<int:room_id>/role', methods=['POST'])
 def set_open_member_role(room_id):
     user = session.get('user')
-    if not user: return jsonify({"success": False, "message": "로그인 필요"}), 401
+    if not user: return jsonify({"success": False}), 401
     
     target_user = request.form.get('target_user')
-    new_role = request.form.get('role') # 'sub_owner' or 'member'
+    new_role = request.form.get('role')
 
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # 내가 방장인지 권한 확인
         cur.execute("SELECT role FROM open_room_members WHERE room_id = %s AND user_id = %s", (room_id, user))
         res = cur.fetchone()
         my_role = safe_get(res, 'role', index=0)
 
         if my_role != 'owner':
-            return jsonify({"success": False, "message": "방장만 설정할 수 있습니다."}), 403
+            return jsonify({"success": False, "message": "방장 전용"}), 403
 
         cur.execute("UPDATE open_room_members SET role = %s WHERE room_id = %s AND user_id = %s", (new_role, room_id, target_user))
         conn.commit()
@@ -706,11 +746,10 @@ def set_open_member_role(room_id):
         cur.close()
         conn.close()
 
-# 🔥 오픈채팅 멤버 강퇴(차단) API (방장 & 부방장 전용)
 @app.route('/open_chat/<int:room_id>/kick', methods=['POST'])
 def kick_open_member(room_id):
     user = session.get('user')
-    if not user: return jsonify({"success": False, "message": "로그인 필요"}), 401
+    if not user: return jsonify({"success": False}), 401
     
     target_user = request.form.get('target_user')
 
@@ -722,9 +761,8 @@ def kick_open_member(room_id):
         my_role = safe_get(res, 'role', index=0)
 
         if my_role not in ['owner', 'sub_owner']:
-            return jsonify({"success": False, "message": "강퇴 권한이 없습니다."}), 403
+            return jsonify({"success": False, "message": "권한 없음"}), 403
 
-        # 멤버에서 삭제 후 차단 목록에 추가
         cur.execute("DELETE FROM open_room_members WHERE room_id = %s AND user_id = %s", (room_id, target_user))
         cur.execute("INSERT INTO open_room_banned (room_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (room_id, target_user))
         conn.commit()
@@ -736,7 +774,7 @@ def kick_open_member(room_id):
         cur.close()
         conn.close()
 
-# --- 비밀 단톡방 / 커뮤니티 라우트 생략 없이 전체 유지 ---
+# --- 비밀 단톡방 / 커뮤니티 라우트 ---
 
 @app.route('/group/create', methods=['POST'])
 def create_group_room():
@@ -779,7 +817,7 @@ def group_chat(room_id):
         messages = cur.fetchall()
     except Exception as e:
         conn.rollback()
-        return f"<script>alert('단톡방 불러오기 오류: {str(e)}'); history.back();</script>", 500
+        return f"<script>alert('단톡방 로딩 오류: {str(e)}'); history.back();</script>", 500
     finally:
         cur.close()
         conn.close()
@@ -819,9 +857,9 @@ def send_anonymous_ask():
                 cur.execute("INSERT INTO ask_messages (target_user, sender_id, content, created_at) VALUES (%s, %s, %s, %s)",
                             (target_id, user, content, get_kst_now()))
                 conn.commit()
-                return "<script>alert('익명 메시지를 성공적으로 보냈습니다!'); location.href='/';</script>"
+                return "<script>alert('익명 메시지를 보냈습니다!'); location.href='/';</script>"
             else:
-                return "<script>alert('존재하지 않는 유저 아이디입니다.'); history.back();</script>", 400
+                return "<script>alert('존재하지 않는 유저입니다.'); history.back();</script>", 400
         except Exception as e:
             conn.rollback()
             return f"<script>alert('전송 오류: {str(e)}'); history.back();</script>", 500
