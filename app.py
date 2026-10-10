@@ -225,7 +225,13 @@ def login():
             conn = get_db_connection()
             cur = conn.cursor()
 
-            cur.execute("SELECT username, password FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (username,))
+            # COALESCE를 사용해 is_active가 NULL인 기존 회원도 정상 인식하도록 수정
+            cur.execute("""
+                SELECT username, password 
+                FROM users 
+                WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) 
+                  AND COALESCE(is_active, TRUE) = TRUE
+            """, (username,))
             user_row = cur.fetchone()
 
             if user_row is not None:
