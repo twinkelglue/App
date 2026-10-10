@@ -26,7 +26,7 @@ def get_db_connection():
     conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
     return conn
 
-# 안전 가드 헬퍼 함수 (Dict/Tuple 접속 타입 에러 방지)
+# 안전 가드 헬퍼 함수
 def safe_get(item, key, index=0, default=None):
     if item is None:
         return default
@@ -37,7 +37,7 @@ def safe_get(item, key, index=0, default=None):
     except (IndexError, TypeError):
         return default
 
-# 데이터베이스 테이블 및 컬럼 초기화 (자동 마이그레이션 포함)
+# 데이터베이스 테이블 및 컬럼 초기화
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -107,7 +107,7 @@ def init_db():
         );
     """)
 
-    # 5. 오픈채팅방, 멤버/권한, 메시지, 강퇴(차단) 테이블 (사진 및 안 읽은 수 추가)
+    # 5. 오픈채팅방, 멤버/권한, 메시지, 강퇴(차단) 테이블
     cur.execute("""
         CREATE TABLE IF NOT EXISTS open_rooms (
             id SERIAL PRIMARY KEY,
@@ -188,7 +188,8 @@ def init_db():
 
 init_db()
 
-# --- 인증 라우트 ---
+# --- 인증 라우트 (회원가입 및 로그인 수정 완료) ---
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -202,17 +203,18 @@ def register():
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            # 대소문자 구분 없이 아이디 중복 체크
-            cur.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
+            # 대소문자 및 공백 무시한 중복검사
+            cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
             if cur.fetchone():
                 return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
 
             hashed_pw = generate_password_hash(password)
             cur.execute("""
-                INSERT INTO users (username, password, nickname, last_seen) 
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (username, password, nickname, bio, profile_img, is_active, last_seen) 
+                VALUES (%s, %s, %s, '안녕하세요!', 'default.png', TRUE, %s)
             """, (username, hashed_pw, nickname, get_kst_now()))
             conn.commit()
+            return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
         except Exception as e:
             conn.rollback()
             return f"<script>alert('회원가입 중 오류 발생: {str(e)}'); history.back();</script>", 500
@@ -220,50 +222,7 @@ def register():
             cur.close()
             conn.close()
 
-        return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
     return render_template('register.html')
-
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
-        nickname = request.form.get('nickname', '').strip()
-
-        if not username or not password or not nickname:
-            return "<script>alert('모든 필드를 입력해 주세요.'); history.back();</script>", 400
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            # 1. 중복 아이디 정확히 검사
-            cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
-            existing_user = cur.fetchone()
-
-            if existing_user:
-                return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
-
-            # 2. 신규 회원가입 처리
-            hashed_pw = generate_password_hash(password)
-            cur.execute("""
-                INSERT INTO users (username, password, nickname, bio, profile_img, is_active, last_seen) 
-                VALUES (%s, %s, %s, '안녕하세요!', 'default.png', TRUE, %s)
-            """, (username, hashed_pw, nickname, get_kst_now()))
-            
-            conn.commit()
-            return "<script>alert('회원가입 성공! 로그인해 주세요.'); location.href='/login';</script>"
-
-        except Exception as e:
-            conn.rollback()
-            # DB 트랜잭션 오류 시 상세 원인 출력
-            return f"<script>alert('회원가입 처리 중 DB 오류: {str(e)}'); history.back();</script>", 500
-        finally:
-            cur.close()
-            conn.close()
-
-    return render_template('register.html')
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -281,7 +240,6 @@ def login():
             user_row = cur.fetchone()
 
             if user_row:
-                # DictCursor와 Tuple 방식 모두 안전하게 처리
                 real_pw = user_row['password'] if isinstance(user_row, dict) else user_row[1]
                 real_username = user_row['username'] if isinstance(user_row, dict) else user_row[0]
 
@@ -300,8 +258,6 @@ def login():
             conn.close()
 
     return render_template('login.html')
-
-
 
 @app.route('/logout')
 def logout():
@@ -363,7 +319,7 @@ def index():
         except Exception:
             conn.rollback()
 
-        # 4. 모든 1:1 대화 내역 목록 조회
+        # 4. 모든 1:1 대화 내역 목록 조회 (팔로우 여부 상관없이 전체)
         try:
             cur.execute("""
                 WITH partners AS (
@@ -475,7 +431,6 @@ def update_profile():
 
     return redirect(url_for('index'))
 
-# 🔍 대소문자 무시 및 공백 제거가 적용된 아이디 검색 팔로우
 @app.route('/follow/search', methods=['POST'])
 def follow_by_search():
     user = session.get('user')
@@ -493,7 +448,7 @@ def follow_by_search():
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT username, nickname FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (target_username,))
+        cur.execute("SELECT username, nickname FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (target_username,))
         target_user = cur.fetchone()
 
         if not target_user:
@@ -551,7 +506,7 @@ def dm_chat(username):
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT username, nickname, profile_img FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
+        cur.execute("SELECT username, nickname, profile_img FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s))", (username,))
         partner = cur.fetchone()
 
         if not partner:
@@ -905,7 +860,7 @@ def send_anonymous_ask():
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (target_id,))
+            cur.execute("SELECT username FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s)) AND is_active = TRUE", (target_id,))
             target_row = cur.fetchone()
             if target_row:
                 real_target_id = safe_get(target_row, 'username', index=0)
