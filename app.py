@@ -119,7 +119,7 @@ def init_db():
             id SERIAL PRIMARY KEY,
             room_id INT REFERENCES open_rooms(id) ON DELETE CASCADE,
             user_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
-            role VARCHAR(20) DEFAULT 'member', -- 'owner', 'sub_owner', 'member'
+            role VARCHAR(20) DEFAULT 'member',
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(room_id, user_id)
@@ -158,7 +158,7 @@ def init_db():
         );
     """)
 
-    # 7. [커뮤니티] 생각 클라우드 (피드 + 사진 + 좋아요 + 익명댓글)
+    # 7. [커뮤니티] 생각 클라우드
     cur.execute("""
         CREATE TABLE IF NOT EXISTS community_posts (
             id SERIAL PRIMARY KEY,
@@ -203,7 +203,7 @@ def register():
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT username FROM users WHERE username = %s", (username,))
+            cur.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
             if cur.fetchone():
                 return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>", 400
 
@@ -230,14 +230,15 @@ def login():
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT * FROM users WHERE username = %s AND is_active = TRUE", (username,))
+            cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (username,))
             user_row = cur.fetchone()
 
             if user_row:
                 user_pw = safe_get(user_row, 'password', index=1)
+                real_username = safe_get(user_row, 'username', index=0)
                 if check_password_hash(user_pw, password):
-                    session['user'] = username
-                    cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), username))
+                    session['user'] = real_username
+                    cur.execute("UPDATE users SET last_seen = %s WHERE username = %s", (get_kst_now(), real_username))
                     conn.commit()
                     return redirect(url_for('index'))
 
@@ -311,7 +312,7 @@ def index():
         except Exception:
             conn.rollback()
 
-        # 4. 팔로우 유무와 상관없이 모든 1:1 대화 내역 목록 조회 (채팅 탭용)
+        # 4. 모든 1:1 대화 내역 목록 조회
         try:
             cur.execute("""
                 WITH partners AS (
@@ -339,7 +340,7 @@ def index():
         except Exception:
             conn.rollback()
 
-        # 5. [커뮤니티] 나에게 온 1:1 익명 메시지
+        # 5. [커뮤니티] 나에게 온 익명 메시지
         try:
             cur.execute("SELECT id, content, created_at FROM ask_messages WHERE target_user = %s ORDER BY id DESC", (user,))
             my_asks = cur.fetchall()
@@ -423,6 +424,7 @@ def update_profile():
 
     return redirect(url_for('index'))
 
+# 🔍 대소문자 무시 및 공백 제거가 적용된 아이디 검색 팔로우
 @app.route('/follow/search', methods=['POST'])
 def follow_by_search():
     user = session.get('user')
@@ -434,27 +436,29 @@ def follow_by_search():
     if not target_username:
         return "<script>alert('아이디를 입력해 주세요.'); history.back();</script>", 400
 
-    if target_username == user:
+    if target_username.lower() == user.lower():
         return "<script>alert('자기 자신은 팔로우할 수 없습니다.'); history.back();</script>", 400
 
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT username, nickname FROM users WHERE username = %s AND is_active = TRUE", (target_username,))
+        cur.execute("SELECT username, nickname FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (target_username,))
         target_user = cur.fetchone()
 
         if not target_user:
             return "<script>alert('존재하지 않는 아이디입니다.'); history.back();</script>", 400
 
+        real_target_username = safe_get(target_user, 'username', index=0)
+        nickname = safe_get(target_user, 'nickname', index=1)
+
         cur.execute("""
             INSERT INTO follows (follower, following, created_at) 
             VALUES (%s, %s, %s) 
             ON CONFLICT (follower, following) DO NOTHING
-        """, (user, target_username, get_kst_now()))
+        """, (user, real_target_username, get_kst_now()))
         conn.commit()
 
-        nickname = safe_get(target_user, 'nickname', index=1)
-        return f"<script>alert('{nickname}(@{target_username})님을 팔로우했습니다!'); location.href='/';</script>"
+        return f"<script>alert('{nickname}(@{real_target_username})님을 팔로우했습니다!'); location.href='/';</script>"
 
     except Exception as e:
         conn.rollback()
@@ -496,7 +500,7 @@ def dm_chat(username):
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT username, nickname, profile_img FROM users WHERE username = %s", (username,))
+        cur.execute("SELECT username, nickname, profile_img FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
         partner = cur.fetchone()
 
         if not partner:
@@ -504,10 +508,12 @@ def dm_chat(username):
             conn.close()
             return "<script>alert('존재하지 않는 유저입니다.'); history.back();</script>", 404
 
-        cur.execute("SELECT id FROM follows WHERE follower = %s AND following = %s", (user, username))
+        real_partner_name = safe_get(partner, 'username', index=0)
+
+        cur.execute("SELECT id FROM follows WHERE follower = %s AND following = %s", (user, real_partner_name))
         is_following = cur.fetchone() is not None
 
-        cur.execute("UPDATE direct_messages SET is_read = TRUE WHERE sender = %s AND receiver = %s", (username, user))
+        cur.execute("UPDATE direct_messages SET is_read = TRUE WHERE sender = %s AND receiver = %s", (real_partner_name, user))
         conn.commit()
 
         cur.execute("""
@@ -515,7 +521,7 @@ def dm_chat(username):
             FROM direct_messages 
             WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
             ORDER BY id ASC
-        """, (user, username, username, user))
+        """, (user, real_partner_name, real_partner_name, user))
         messages = cur.fetchall()
 
     except Exception as e:
@@ -622,7 +628,6 @@ def open_chat(room_id):
             conn.close()
             return "<script>alert('존재하지 않는 방입니다.'); history.back();</script>", 404
 
-        # 참여자 등록 및 읽은 시각 최신화
         room_owner = safe_get(room, 'created_by', index=2)
         my_role = 'owner' if room_owner == user else 'member'
         
@@ -638,7 +643,6 @@ def open_chat(room_id):
         role_res = cur.fetchone()
         current_role = safe_get(role_res, 'role', index=0, default='member')
 
-        # 전체 참여자 목록 & 총 인원 계산
         cur.execute("""
             SELECT m.user_id, m.role, u.nickname, u.profile_img
             FROM open_room_members m
@@ -649,7 +653,6 @@ def open_chat(room_id):
         members = cur.fetchall()
         total_member_cnt = len(members)
 
-        # 메시지 목록 및 메시지별 안 읽은 사람 수 계산
         cur.execute("""
             SELECT 
                 om.id, om.sender_anon, om.sender_real_id, om.message, om.image_url, om.created_at,
@@ -706,7 +709,6 @@ def send_open_message(room_id):
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (room_id, anon_name, user, msg, img_name, get_kst_now()))
             
-            # 내가 보낸 시간 기준으로 읽은 시각 업데이트
             cur.execute("UPDATE open_room_members SET last_read_at = %s WHERE room_id = %s AND user_id = %s", 
                         (get_kst_now(), room_id, user))
             conn.commit()
@@ -852,10 +854,12 @@ def send_anonymous_ask():
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT username FROM users WHERE username = %s AND is_active = TRUE", (target_id,))
-            if cur.fetchone():
+            cur.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE", (target_id,))
+            target_row = cur.fetchone()
+            if target_row:
+                real_target_id = safe_get(target_row, 'username', index=0)
                 cur.execute("INSERT INTO ask_messages (target_user, sender_id, content, created_at) VALUES (%s, %s, %s, %s)",
-                            (target_id, user, content, get_kst_now()))
+                            (real_target_id, user, content, get_kst_now()))
                 conn.commit()
                 return "<script>alert('익명 메시지를 보냈습니다!'); location.href='/';</script>"
             else:
