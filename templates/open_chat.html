@@ -1,3 +1,4 @@
+{% import '_chat_tools.html' as tools %}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -44,8 +45,8 @@
         .msg-meta { font-size: 0.65rem; color: #64748b; }
         .empty-text { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-top: 40px; }
 
-        .input-box { padding: 10px; border-top: 1px solid var(--border-color); display: flex; gap: 8px; background: var(--card-bg); }
-        .input-style { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; color: white; outline: none; flex: 1; font-size: 0.9rem; }
+        .input-box { padding: 10px; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 8px; background: var(--card-bg); }
+        .input-style { min-width: 0; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; color: white; outline: none; flex: 1; font-size: 0.9rem; }
         .btn-send { background: var(--accent-blue); border: none; padding: 8px 16px; border-radius: 10px; font-weight: bold; cursor: pointer; color: black; }
         .hint { font-size: 0.65rem; color: #64748b; text-align: center; padding: 0 10px 8px; background: var(--card-bg); }
 
@@ -63,6 +64,7 @@
             <a href="{{ url_for('open_chat_list') }}">⬅️</a>
             <strong>🌐 {{ room.title }}</strong>
         </div>
+        {% if anon_name %}{{ tools.size_control() }}{% endif %}
         {% if anon_name %}
             <span class="my-name">
                 나: {{ anon_name }}
@@ -145,7 +147,7 @@
         {% endif %}
 
         <!-- 메시지 목록 -->
-        <div class="msg-list" id="msgContainer">
+        <div class="msg-list" id="msgContainer" data-chat-zoom>
             {% for m in messages %}
                 {% set mine = (m.sender_real_id == my_id) %}
                 <div class="msg-wrapper {% if mine %}my-wrapper{% else %}other-wrapper{% endif %}" id="msg-box-{{ m.id }}">
@@ -155,7 +157,7 @@
                         {% elif m.sender_real_id == room.sub_host %}<span class="role-badge role-sub">부방장</span>{% endif %}
                     </div>
                     <div class="msg-box-row" style="flex-direction: {% if mine %}row-reverse{% else %}row{% endif %};">
-                        <div class="msg-item {% if mine %}my-msg{% else %}other-msg{% endif %} {% if mine or is_host or is_sub_host %}deletable{% endif %}" data-msg-id="{{ m.id }}">{{ m.message }}</div>
+                        <div class="msg-item {% if mine %}my-msg{% else %}other-msg{% endif %} {% if mine or is_host or is_sub_host %}deletable{% endif %} {% if m.image_url and not m.message %}img-only{% endif %}" data-msg-id="{{ m.id }}">{{ tools.msg_content(m) }}</div>
                         <div class="msg-meta">{{ m.created_at.strftime('%H:%M') if m.created_at else '' }}</div>
                     </div>
                 </div>
@@ -165,13 +167,16 @@
         </div>
 
         <!-- 입력창 -->
-        <form action="{{ url_for('send_open_message', room_id=room.id) }}" method="POST" class="input-box">
-            <input type="text" name="message" placeholder="메시지 입력..." class="input-style" maxlength="2000" required autocomplete="off">
+        <form action="{{ url_for('send_open_message', room_id=room.id) }}" method="POST" class="input-box" enctype="multipart/form-data">
+            {{ tools.photo_button() }}
+            <input type="text" name="message" placeholder="메시지 입력..." class="input-style" maxlength="2000" autocomplete="off">
             <button type="submit" class="btn-send">전송</button>
         </form>
-        <div class="hint">* 메시지를 두 번 누르면 삭제할 수 있어요</div>
+        <div class="hint">* 메시지를 두 번 누르면 삭제 · 사진을 누르면 크게 보기</div>
     {% endif %}
 </div>
+
+{{ tools.assets() }}
 
 <script>
     const container = document.getElementById('msgContainer');
