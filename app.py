@@ -2,13 +2,15 @@ import os
 import time
 import json
 import hmac
+import io
+import secrets
 from functools import wraps
 
-from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify, Response, abort
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 import psycopg
 from psycopg.rows import dict_row
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 # ----------------------------------------------------------------
 # 기본 설정
@@ -21,7 +23,7 @@ except AttributeError:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-only-change-this-secret-key')
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
@@ -30,8 +32,6 @@ if not DATABASE_URL:
 ADMIN_USERNAME = 'admin'
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin1234')
 DEFAULT_BIO = '안녕하세요! ChatClub입니다.'
-ALLOWED_IMAGE_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-UPLOAD_DIR = os.path.join(app.root_path, 'static')
 MAX_MESSAGE_LEN = 2000
 LAST_SEEN_INTERVAL_SEC = 60
 
@@ -84,8 +84,63 @@ def fmt_time(value):
     return value.strftime('%Y-%m-%d %H:%M:%S') if value else None
 
 
-def allowed_image(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXT
+# ----------------------------------------------------------------
+# 사진 저장 (Render 서버 디스크는 재시작 시 지워지므로 DB에 저장)
+# ----------------------------------------------------------------
+Image.MAX_IMAGE_PIXELS = 50_000_000
+CHAT_IMAGE_MAX_SIDE = 1280
+PROFILE_IMAGE_MAX_SIDE = 400
+DEFAULT_AVATAR = (
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+    "<rect width='100' height='100' fill='%231e293b'/><circle cx='50' cy='38' r='18' fill='%2394a3b8'/>"
+    "<path d='M18 88c4-18 18-28 32-28s28 10 32 28z' fill='%2394a3b8'/></svg>"
+)
+
+
+def get_uploaded_image(field_name='image'):
+    file = request.files.get(field_name)
+    if file and file.filename:
+        return file
+    return None
+
+
+def process_image(file_storage, max_side):
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError('빈 파일입니다.')
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.draft('RGB', (max_side * 2, max_side * 2))
+        img = ImageOps.exif_transpose(img)
+        if img.mode in ('RGBA', 'LA', 'P', 'PA'):
+            img = img.convert('RGBA')
+        else:
+            img = img.convert('RGB')
+        img.thumbnail((max_side, max_side), Image.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, 'WEBP', quality=80, method=4)
+        return out.getvalue()
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError):
+        raise ValueError('사진 파일(jpg, png, gif, webp)만 올릴 수 있습니다.')
+
+
+def save_image(cur, image_bytes, owner):
+    key = secrets.token_hex(16)
+    cur.execute("INSERT INTO images (key, owner, mime, data) VALUES (%s, %s, %s, %s)",
+                (key, owner, 'image/webp', image_bytes))
+    return f'/img/{key}'
+
+
+def delete_image(cur, url):
+    if url and url.startswith('/img/'):
+        cur.execute("DELETE FROM images WHERE key = %s", (url[len('/img/'):],))
+
+
+@app.template_filter('avatar')
+def avatar_filter(value):
+    if value and value.startswith('/img/'):
+        return value
+    return DEFAULT_AVATAR
 
 
 def login_required(view):
@@ -218,11 +273,113 @@ def init_db():
             );
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS community_posts (
+                id SERIAL PRIMARY KEY,
+                author_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                image_url VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS community_likes (
+                id SERIAL PRIMARY KEY,
+                post_id INT REFERENCES community_posts(id) ON DELETE CASCADE,
+                user_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+                UNIQUE (post_id, user_id)
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS community_comments (
+                id SERIAL PRIMARY KEY,
+                post_id INT REFERENCES community_posts(id) ON DELETE CASCADE,
+                author_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+                comment TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS images (
+                key VARCHAR(32) PRIMARY KEY,
+                owner VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+                mime VARCHAR(30) NOT NULL,
+                data BYTEA NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        # 예전 버전 app.py가 만든 테이블에 빠진 컬럼 자동 보강
+        for sql in [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname VARCHAR(50)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS bio VARCHAR(255) DEFAULT '안녕하세요! ChatClub입니다.'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_img VARCHAR(255) DEFAULT 'default.png'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP",
+            "UPDATE users SET nickname = username WHERE nickname IS NULL",
+            "UPDATE users SET is_active = TRUE WHERE is_active IS NULL",
+            "UPDATE users SET is_banned = FALSE WHERE is_banned IS NULL",
+            "ALTER TABLE follows ADD COLUMN IF NOT EXISTS column_id SERIAL",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE room_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE open_rooms ADD COLUMN IF NOT EXISTS title VARCHAR(100)",
+            "ALTER TABLE open_rooms ADD COLUMN IF NOT EXISTS sub_host VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL",
+            "ALTER TABLE open_rooms ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE open_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE ask_messages ADD COLUMN IF NOT EXISTS answer TEXT",
+            "ALTER TABLE ask_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE ask_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS image_url VARCHAR(255)",
+            "ALTER TABLE room_messages ADD COLUMN IF NOT EXISTS image_url VARCHAR(255)",
+            "ALTER TABLE open_messages ADD COLUMN IF NOT EXISTS image_url VARCHAR(255)",
+            "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS image_url VARCHAR(255)",
+        ]:
+            cur.execute(sql)
+
+        cur.execute("""
+            DO $$
+            DECLARE
+                legacy RECORD;
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_schema = current_schema() AND table_name = 'open_rooms'
+                             AND column_name = 'room_name') THEN
+                    EXECUTE 'UPDATE open_rooms SET title = room_name WHERE title IS NULL';
+                END IF;
+                UPDATE open_rooms SET title = '제목 없는 방' WHERE title IS NULL;
+
+                FOR legacy IN
+                    SELECT table_name, column_name FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND is_nullable = 'NO' AND column_default IS NULL
+                      AND (table_name, column_name) IN (('open_rooms', 'room_name'), ('ask_messages', 'sender_id'),
+                                                        ('follows', 'created_at'), ('open_messages', 'image_url'))
+                LOOP
+                    EXECUTE format('ALTER TABLE %I ALTER COLUMN %I DROP NOT NULL', legacy.table_name, legacy.column_name);
+                END LOOP;
+            END $$;
+        """)
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_community_likes_post ON community_likes (post_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_community_comments_post ON community_comments (post_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_dm_pair ON direct_messages (sender, receiver);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_dm_unread ON direct_messages (receiver, is_read);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_room ON room_messages (room_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_open_messages_room ON open_messages (room_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ask_target ON ask_messages (target_user);")
+
+        cur.execute("""
+            DELETE FROM images i
+            WHERE i.created_at < CURRENT_TIMESTAMP - INTERVAL '10 minutes'
+              AND NOT EXISTS (SELECT 1 FROM direct_messages WHERE image_url = '/img/' || i.key)
+              AND NOT EXISTS (SELECT 1 FROM room_messages WHERE image_url = '/img/' || i.key)
+              AND NOT EXISTS (SELECT 1 FROM open_messages WHERE image_url = '/img/' || i.key)
+              AND NOT EXISTS (SELECT 1 FROM community_posts WHERE image_url = '/img/' || i.key)
+              AND NOT EXISTS (SELECT 1 FROM users WHERE profile_img = '/img/' || i.key)
+        """)
 
         cur.execute("""
             INSERT INTO users (username, password, nickname, is_active, is_banned)
@@ -265,7 +422,21 @@ def update_last_seen():
 
 @app.errorhandler(413)
 def too_large(_e):
-    return js_alert('업로드 파일은 5MB 이하만 가능합니다.', status=413)
+    return js_alert('사진은 15MB 이하만 올릴 수 있습니다.', status=413)
+
+
+@app.route('/img/<key>')
+def serve_image(key):
+    if len(key) != 32 or not all(ch in '0123456789abcdef' for ch in key):
+        abort(404)
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT mime, data FROM images WHERE key = %s", (key,))
+        row = cur.fetchone()
+    if not row:
+        abort(404)
+    resp = Response(bytes(row['data']), mimetype=row['mime'])
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
 
 
 # ----------------------------------------------------------------
@@ -277,11 +448,12 @@ def index():
     my_rooms = []
     all_users = []
     dm_list = []
+    posts = []
     unread_total = 0
 
     if not user:
         return render_template('index.html', my_rooms=my_rooms, all_users=all_users,
-                               dm_list=dm_list, unread_total=unread_total, user=user)
+                               dm_list=dm_list, unread_total=unread_total, user=user, posts=posts)
 
     with get_db_connection() as conn, conn.cursor() as cur:
         try:
@@ -333,7 +505,7 @@ def index():
                        (f.column_id IS NOT NULL) AS is_following,
                        COALESCE(u.last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes', FALSE) AS is_online,
                        a.unread_count, a.last_msg_time,
-                       (SELECT message FROM direct_messages WHERE id = a.last_msg_id) AS last_message
+                       (SELECT CASE WHEN COALESCE(message, '') = '' AND image_url IS NOT NULL THEN '📷 사진' ELSE message END FROM direct_messages WHERE id = a.last_msg_id) AS last_message
                 FROM agg a
                 JOIN users u ON u.username = a.partner_id AND u.is_active = TRUE
                 LEFT JOIN follows f ON f.follower = %(me)s AND f.following = u.username
@@ -345,8 +517,24 @@ def index():
             conn.rollback()
             app.logger.error(f'DM 목록 오류: {e}')
 
+        try:
+            cur.execute("""
+                SELECT p.id, p.author_id, u.nickname, u.profile_img, p.content, p.image_url, p.created_at,
+                       (SELECT COUNT(*) FROM community_likes l WHERE l.post_id = p.id) AS like_count,
+                       (SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.id) AS comment_count,
+                       EXISTS (SELECT 1 FROM community_likes l WHERE l.post_id = p.id AND l.user_id = %s) AS is_liked
+                FROM community_posts p
+                JOIN users u ON u.username = p.author_id AND u.is_active = TRUE
+                ORDER BY p.id DESC
+                LIMIT 30
+            """, (user,))
+            posts = cur.fetchall()
+        except psycopg.Error as e:
+            conn.rollback()
+            app.logger.error(f'커뮤니티 목록 오류: {e}')
+
     return render_template('index.html', my_rooms=my_rooms, all_users=all_users,
-                           dm_list=dm_list, unread_total=unread_total, user=user)
+                           dm_list=dm_list, unread_total=unread_total, user=user, posts=posts)
 
 
 # ----------------------------------------------------------------
@@ -508,21 +696,29 @@ def dm_chat(username):
             return '존재하지 않거나 탈퇴한 회원입니다.', 404
 
         if request.method == 'POST':
-            message = get_field('message')
-            if not message:
+            message = get_field('message') or ''
+            upload = get_uploaded_image()
+            if not message and not upload:
                 if wants_json():
                     return jsonify({'success': False, 'message': '메시지를 입력해주세요.'}), 400
                 return redirect(url_for('dm_chat', username=username))
             if len(message) > MAX_MESSAGE_LEN:
                 return json_or_alert(False, f'메시지는 {MAX_MESSAGE_LEN}자 이하로 입력해주세요.', status=400)
 
+            image_url = None
+            if upload:
+                try:
+                    image_url = save_image(cur, process_image(upload, CHAT_IMAGE_MAX_SIDE), my_id)
+                except ValueError as e:
+                    return json_or_alert(False, str(e), status=400)
+
             cur.execute("""
-                INSERT INTO direct_messages (sender, receiver, message)
-                VALUES (%s, %s, %s) RETURNING id, created_at
-            """, (my_id, username, message))
+                INSERT INTO direct_messages (sender, receiver, message, image_url)
+                VALUES (%s, %s, %s, %s) RETURNING id, created_at
+            """, (my_id, username, message, image_url))
             row = cur.fetchone()
             if wants_json():
-                return jsonify({'success': True, 'id': row['id'], 'sender': my_id,
+                return jsonify({'success': True, 'id': row['id'], 'sender': my_id, 'image_url': image_url,
                                 'message': message, 'created_at': fmt_time(row['created_at'])})
             return redirect(url_for('dm_chat', username=username))
 
@@ -532,7 +728,7 @@ def dm_chat(username):
         """, (username, my_id))
 
         cur.execute("""
-            SELECT id, sender, receiver, message, created_at, is_read
+            SELECT id, sender, receiver, message, image_url, created_at, is_read
             FROM direct_messages
             WHERE (sender = %(me)s AND receiver = %(other)s AND COALESCE(deleted_by_sender, FALSE) = FALSE)
                OR (sender = %(other)s AND receiver = %(me)s AND COALESCE(deleted_by_receiver, FALSE) = FALSE)
@@ -562,7 +758,10 @@ def dm_delete_message(username, message_id):
         if mode == 'all':
             if msg['sender'] != my_id and not is_admin():
                 return json_or_alert(False, '내가 보낸 메시지만 모두에게서 삭제할 수 있습니다.', redirect_url, 403)
-            cur.execute("DELETE FROM direct_messages WHERE id = %s", (message_id,))
+            cur.execute("DELETE FROM direct_messages WHERE id = %s RETURNING image_url", (message_id,))
+            gone = cur.fetchone()
+            if gone:
+                delete_image(cur, gone['image_url'])
         else:
             if msg['sender'] == my_id:
                 cur.execute("UPDATE direct_messages SET deleted_by_sender = TRUE WHERE id = %s", (message_id,))
@@ -571,7 +770,11 @@ def dm_delete_message(username, message_id):
             cur.execute("""
                 DELETE FROM direct_messages
                 WHERE id = %s AND deleted_by_sender = TRUE AND deleted_by_receiver = TRUE
+                RETURNING image_url
             """, (message_id,))
+            gone = cur.fetchone()
+            if gone:
+                delete_image(cur, gone['image_url'])
 
     if wants_json():
         return jsonify({'success': True, 'message': '메시지가 삭제되었습니다.', 'mode': mode})
@@ -595,7 +798,10 @@ def dm_clear_conversation(username):
             DELETE FROM direct_messages
             WHERE ((sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s))
               AND deleted_by_sender = TRUE AND deleted_by_receiver = TRUE
+            RETURNING image_url
         """, (my_id, username, username, my_id))
+        for gone in cur.fetchall():
+            delete_image(cur, gone['image_url'])
 
     if wants_json():
         return jsonify({'success': True, 'message': '대화방이 내 목록에서 삭제되었습니다.'})
@@ -670,22 +876,29 @@ def group_chat(room_id):
         if request.method == 'POST':
             if not is_member:
                 return json_or_alert(False, '멤버만 메시지를 보낼 수 있습니다.', status=403)
-            message = get_field('message')
-            if message:
+            message = get_field('message') or ''
+            upload = get_uploaded_image()
+            if message or upload:
                 if len(message) > MAX_MESSAGE_LEN:
                     return json_or_alert(False, f'메시지는 {MAX_MESSAGE_LEN}자 이하로 입력해주세요.', status=400)
+                image_url = None
+                if upload:
+                    try:
+                        image_url = save_image(cur, process_image(upload, CHAT_IMAGE_MAX_SIDE), user)
+                    except ValueError as e:
+                        return json_or_alert(False, str(e), status=400)
                 cur.execute("""
-                    INSERT INTO room_messages (room_id, sender, message)
-                    VALUES (%s, %s, %s) RETURNING id, created_at
-                """, (room_id, user, message))
+                    INSERT INTO room_messages (room_id, sender, message, image_url)
+                    VALUES (%s, %s, %s, %s) RETURNING id, created_at
+                """, (room_id, user, message, image_url))
                 row = cur.fetchone()
                 if wants_json():
-                    return jsonify({'success': True, 'id': row['id'], 'sender': user,
+                    return jsonify({'success': True, 'id': row['id'], 'sender': user, 'image_url': image_url,
                                     'message': message, 'created_at': fmt_time(row['created_at'])})
             return redirect(url_for('group_chat', room_id=room_id))
 
         cur.execute("""
-            SELECT m.id, m.sender, u.nickname, u.profile_img, m.message, m.created_at
+            SELECT m.id, m.sender, u.nickname, u.profile_img, m.message, m.image_url, m.created_at
             FROM room_messages m
             LEFT JOIN users u ON u.username = m.sender
             WHERE m.room_id = %s
@@ -744,23 +957,10 @@ def leave_group(room_id):
 
 @app.route('/my_chats')
 def my_joined_rooms():
-    current_user = session.get('user')
-    if not current_user:
+    if not session.get('user'):
         flash('로그인이 필요한 서비스입니다.')
         return redirect(url_for('login'))
-
-    with get_db_connection() as conn, conn.cursor() as cur:
-        cur.execute("""
-            SELECT r.id, r.room_name, r.created_by,
-                   (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) AS member_count
-            FROM chat_rooms r
-            JOIN room_members m ON r.id = m.room_id
-            WHERE m.user_id = %s
-            ORDER BY r.id DESC
-        """, (current_user,))
-        my_rooms = cur.fetchall()
-
-    return render_template('my_chats.html', rooms=my_rooms, current_user=current_user)
+    return redirect(url_for('index'))
 
 
 # ----------------------------------------------------------------
@@ -831,26 +1031,24 @@ def update_profile():
     nickname = request.form.get('nickname', '').strip()[:50]
     profile_img = request.files.get('profile_img')
 
-    new_filename = None
+    image_bytes = None
     if profile_img and profile_img.filename:
-        if not allowed_image(profile_img.filename):
-            return js_alert('이미지 파일(png, jpg, jpeg, gif, webp)만 업로드할 수 있습니다.', status=400)
-        safe_name = secure_filename(profile_img.filename) or 'profile.png'
-        ext = safe_name.rsplit('.', 1)[-1].lower()
-        new_filename = f"{secure_filename(user) or 'user'}_{int(time.time())}.{ext}"
         try:
-            os.makedirs(UPLOAD_DIR, exist_ok=True)
-            profile_img.save(os.path.join(UPLOAD_DIR, new_filename))
-        except OSError as e:
-            app.logger.error(f'프로필 이미지 저장 실패: {e}')
-            new_filename = None
+            image_bytes = process_image(profile_img, PROFILE_IMAGE_MAX_SIDE)
+        except ValueError as e:
+            return js_alert(str(e), status=400)
 
     with get_db_connection() as conn, conn.cursor() as cur:
         cur.execute("UPDATE users SET bio = %s WHERE username = %s", (bio, user))
         if nickname:
             cur.execute("UPDATE users SET nickname = %s WHERE username = %s", (nickname, user))
-        if new_filename:
-            cur.execute("UPDATE users SET profile_img = %s WHERE username = %s", (new_filename, user))
+        if image_bytes:
+            cur.execute("SELECT profile_img FROM users WHERE username = %s", (user,))
+            old = cur.fetchone()
+            new_url = save_image(cur, image_bytes, user)
+            cur.execute("UPDATE users SET profile_img = %s WHERE username = %s", (new_url, user))
+            if old:
+                delete_image(cur, old['profile_img'])
 
     return redirect(url_for('user_profile', username=user))
 
@@ -885,6 +1083,23 @@ def answer(msg_id):
     return redirect(url_for('user_profile', username=user))
 
 
+@app.route('/delete_message/<int:msg_id>', methods=['POST'])
+@app.route('/delete_ask/<int:msg_id>', methods=['POST'])
+@login_required
+def delete_ask(msg_id):
+    user = session['user']
+    with get_db_connection() as conn, conn.cursor() as cur:
+        if is_admin():
+            cur.execute("DELETE FROM ask_messages WHERE id = %s RETURNING target_user", (msg_id,))
+        else:
+            cur.execute("DELETE FROM ask_messages WHERE id = %s AND target_user = %s RETURNING target_user",
+                        (msg_id, user))
+        row = cur.fetchone()
+    if not row:
+        return js_alert('삭제할 수 없는 질문입니다.', status=403)
+    return redirect(url_for('user_profile', username=row['target_user']))
+
+
 @app.route('/follow/<username>', methods=['POST'])
 @login_required
 def follow(username):
@@ -909,6 +1124,166 @@ def follow(username):
     if wants_json():
         return jsonify({'success': True, 'is_following': following_now})
     return redirect(url_for('user_profile', username=username))
+
+
+# ----------------------------------------------------------------
+# 커뮤니티 게시판 (게시글 / 좋아요 / 댓글)
+# ----------------------------------------------------------------
+MAX_POST_LEN = 2000
+MAX_COMMENT_LEN = 500
+
+
+@app.route('/community/post', methods=['POST'])
+@login_required
+def create_community_post():
+    user = session['user']
+    content = request.form.get('content', '').strip()
+    upload = get_uploaded_image()
+    if not content and not upload:
+        return js_alert('내용을 입력해주세요.', status=400)
+    if len(content) > MAX_POST_LEN:
+        return js_alert(f'게시글은 {MAX_POST_LEN}자 이하로 작성해주세요.', status=400)
+
+    image_bytes = None
+    if upload:
+        try:
+            image_bytes = process_image(upload, CHAT_IMAGE_MAX_SIDE)
+        except ValueError as e:
+            return js_alert(str(e), status=400)
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        image_url = save_image(cur, image_bytes, user) if image_bytes else None
+        cur.execute("INSERT INTO community_posts (author_id, content, image_url) VALUES (%s, %s, %s)",
+                    (user, content, image_url))
+
+    return redirect(url_for('index', tab='community'))
+
+
+@app.route('/community/post/<int:post_id>')
+@login_required
+def community_post(post_id):
+    user = session['user']
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT p.id, p.author_id, u.nickname, u.profile_img, p.content, p.image_url, p.created_at,
+                   (SELECT COUNT(*) FROM community_likes l WHERE l.post_id = p.id) AS like_count,
+                   EXISTS (SELECT 1 FROM community_likes l WHERE l.post_id = p.id AND l.user_id = %s) AS is_liked
+            FROM community_posts p
+            JOIN users u ON u.username = p.author_id AND u.is_active = TRUE
+            WHERE p.id = %s
+        """, (user, post_id))
+        post = cur.fetchone()
+        if not post:
+            return js_alert('삭제되었거나 존재하지 않는 게시글입니다.', url_for('index', tab='community'), 404)
+
+        cur.execute("""
+            SELECT c.id, c.author_id, u.nickname, u.profile_img, c.comment, c.created_at
+            FROM community_comments c
+            JOIN users u ON u.username = c.author_id AND u.is_active = TRUE
+            WHERE c.post_id = %s
+            ORDER BY c.id ASC
+        """, (post_id,))
+        comments = cur.fetchall()
+
+    return render_template('community_post.html', post=post, comments=comments,
+                           my_id=user, is_admin=is_admin())
+
+
+@app.route('/community/post/<int:post_id>/like', methods=['POST'])
+def toggle_post_like(post_id):
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'message': '로그인이 필요합니다.'}), 401
+
+    try:
+        with get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM community_posts WHERE id = %s", (post_id,))
+            if not cur.fetchone():
+                return jsonify({'success': False, 'message': '존재하지 않는 게시글입니다.'}), 404
+
+            cur.execute("DELETE FROM community_likes WHERE post_id = %s AND user_id = %s RETURNING id",
+                        (post_id, user))
+            if cur.fetchone():
+                is_liked = False
+            else:
+                cur.execute("""
+                    INSERT INTO community_likes (post_id, user_id) VALUES (%s, %s)
+                    ON CONFLICT (post_id, user_id) DO NOTHING
+                """, (post_id, user))
+                is_liked = True
+
+            cur.execute("SELECT COUNT(*) AS cnt FROM community_likes WHERE post_id = %s", (post_id,))
+            like_count = cur.fetchone()['cnt']
+    except psycopg.Error as e:
+        app.logger.error(f'좋아요 오류: {e}')
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+
+    return jsonify({'success': True, 'is_liked': is_liked, 'like_count': like_count})
+
+
+@app.route('/community/post/<int:post_id>/comment', methods=['POST'])
+@login_required
+def add_post_comment(post_id):
+    user = session['user']
+    comment = request.form.get('comment', '').strip()
+    post_url = url_for('community_post', post_id=post_id)
+
+    if not comment:
+        return redirect(post_url)
+    if len(comment) > MAX_COMMENT_LEN:
+        return js_alert(f'댓글은 {MAX_COMMENT_LEN}자 이하로 작성해주세요.', post_url, 400)
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM community_posts WHERE id = %s", (post_id,))
+        if not cur.fetchone():
+            return js_alert('삭제되었거나 존재하지 않는 게시글입니다.', url_for('index', tab='community'), 404)
+        cur.execute("INSERT INTO community_comments (post_id, author_id, comment) VALUES (%s, %s, %s)",
+                    (post_id, user, comment))
+
+    return redirect(post_url)
+
+
+@app.route('/community/post/<int:post_id>/delete', methods=['POST'])
+@login_required
+def delete_community_post(post_id):
+    user = session['user']
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT author_id FROM community_posts WHERE id = %s", (post_id,))
+        post = cur.fetchone()
+        if not post:
+            return js_alert('이미 삭제된 게시글입니다.', url_for('index', tab='community'), 404)
+        if post['author_id'] != user and not is_admin():
+            return js_alert('삭제 권한이 없습니다.', status=403)
+        cur.execute("DELETE FROM community_posts WHERE id = %s RETURNING image_url", (post_id,))
+        gone = cur.fetchone()
+        if gone:
+            delete_image(cur, gone['image_url'])
+
+    return js_alert('게시글이 삭제되었습니다.', url_for('index', tab='community'))
+
+
+@app.route('/community/comment/<int:comment_id>/delete', methods=['POST'])
+@login_required
+def delete_community_comment(comment_id):
+    user = session['user']
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT c.post_id, c.author_id, p.author_id AS post_author
+            FROM community_comments c
+            JOIN community_posts p ON p.id = c.post_id
+            WHERE c.id = %s
+        """, (comment_id,))
+        row = cur.fetchone()
+        if not row:
+            return js_alert('이미 삭제된 댓글입니다.', url_for('index', tab='community'), 404)
+        if user not in (row['author_id'], row['post_author']) and not is_admin():
+            return js_alert('삭제 권한이 없습니다.', status=403)
+        cur.execute("DELETE FROM community_comments WHERE id = %s", (comment_id,))
+
+    return redirect(url_for('community_post', post_id=row['post_id']))
 
 
 # ----------------------------------------------------------------
@@ -1020,8 +1395,8 @@ def open_chat_room(room_id):
                                    banned_users=[], participants=[], my_id=user)
 
         cur.execute("""
-            SELECT id, sender_anon, sender_real_id, message, created_at FROM (
-                SELECT id, sender_anon, sender_real_id, message, created_at
+            SELECT id, sender_anon, sender_real_id, message, image_url, created_at FROM (
+                SELECT id, sender_anon, sender_real_id, message, image_url, created_at
                 FROM open_messages WHERE room_id = %s
                 ORDER BY id DESC LIMIT 100
             ) recent
@@ -1056,13 +1431,14 @@ def open_chat_room(room_id):
 @login_required
 def send_open_message(room_id):
     user = session['user']
-    message = get_field('message')
+    message = get_field('message') or ''
+    upload = get_uploaded_image()
     anon_name = session.get(f'anon_name_{room_id}')
     room_url = url_for('open_chat_room', room_id=room_id)
 
     if not anon_name:
         return json_or_alert(False, '먼저 닉네임을 설정해주세요.', room_url, 400)
-    if not message:
+    if not message and not upload:
         if wants_json():
             return jsonify({'success': False, 'message': '메시지를 입력해주세요.'}), 400
         return redirect(room_url)
@@ -1075,14 +1451,21 @@ def send_open_message(room_id):
         if not is_admin() and is_open_banned(cur, room_id, user):
             return json_or_alert(False, '채팅 권한이 없습니다.', url_for('open_chat_list'), 403)
 
+        image_url = None
+        if upload:
+            try:
+                image_url = save_image(cur, process_image(upload, CHAT_IMAGE_MAX_SIDE), user)
+            except ValueError as e:
+                return json_or_alert(False, str(e), room_url, 400)
+
         cur.execute("""
-            INSERT INTO open_messages (room_id, sender_anon, sender_real_id, message)
-            VALUES (%s, %s, %s, %s) RETURNING id, created_at
-        """, (room_id, anon_name, user, message))
+            INSERT INTO open_messages (room_id, sender_anon, sender_real_id, message, image_url)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id, created_at
+        """, (room_id, anon_name, user, message, image_url))
         row = cur.fetchone()
 
     if wants_json():
-        return jsonify({'success': True, 'id': row['id'], 'sender_anon': anon_name,
+        return jsonify({'success': True, 'id': row['id'], 'sender_anon': anon_name, 'image_url': image_url,
                         'message': message, 'created_at': fmt_time(row['created_at'])})
     return redirect(room_url)
 
@@ -1210,7 +1593,7 @@ def admin_dashboard():
     with get_db_connection() as conn, conn.cursor() as cur:
         try:
             cur.execute("""
-                SELECT username, nickname, is_active, COALESCE(is_banned, FALSE) AS is_banned, last_seen,
+                SELECT username, nickname, bio, is_active, COALESCE(is_banned, FALSE) AS is_banned, last_seen,
                        COALESCE(last_seen >= CURRENT_TIMESTAMP - INTERVAL '3 minutes', FALSE) AS is_online
                 FROM users WHERE username <> %s
                 ORDER BY username ASC
@@ -1323,7 +1706,10 @@ def delete_message(chat_type, message_id):
                     return jsonify({'success': False, 'message': '존재하지 않는 메시지입니다.'}), 404
                 allowed = admin or user in (msg['sender_real_id'], msg['created_by'], msg['sub_host'])
                 if allowed:
-                    cur.execute("DELETE FROM open_messages WHERE id = %s", (message_id,))
+                    cur.execute("DELETE FROM open_messages WHERE id = %s RETURNING image_url", (message_id,))
+                    gone = cur.fetchone()
+                    if gone:
+                        delete_image(cur, gone['image_url'])
 
             elif chat_type == 'general':
                 cur.execute("SELECT sender FROM direct_messages WHERE id = %s", (message_id,))
@@ -1332,7 +1718,10 @@ def delete_message(chat_type, message_id):
                     return jsonify({'success': False, 'message': '존재하지 않는 메시지입니다.'}), 404
                 allowed = admin or user == msg['sender']
                 if allowed:
-                    cur.execute("DELETE FROM direct_messages WHERE id = %s", (message_id,))
+                    cur.execute("DELETE FROM direct_messages WHERE id = %s RETURNING image_url", (message_id,))
+                    gone = cur.fetchone()
+                    if gone:
+                        delete_image(cur, gone['image_url'])
 
             else:
                 cur.execute("""
@@ -1346,7 +1735,10 @@ def delete_message(chat_type, message_id):
                     return jsonify({'success': False, 'message': '존재하지 않는 메시지입니다.'}), 404
                 allowed = admin or user in (msg['sender'], msg['created_by'])
                 if allowed:
-                    cur.execute("DELETE FROM room_messages WHERE id = %s", (message_id,))
+                    cur.execute("DELETE FROM room_messages WHERE id = %s RETURNING image_url", (message_id,))
+                    gone = cur.fetchone()
+                    if gone:
+                        delete_image(cur, gone['image_url'])
 
         if allowed:
             return jsonify({'success': True, 'message': '메시지가 삭제되었습니다.'})
