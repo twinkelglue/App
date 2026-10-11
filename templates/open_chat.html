@@ -3,150 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ room.room_name }} - 오픈채팅</title>
+    <title>{{ room.title }} - 오픈채팅</title>
     <style>
         :root {
             --bg-color: #05070a; --card-bg: #121620; --border-color: #1e293b;
-            --accent-blue: #00c6ff; --unread-yellow: #f59e0b;
+            --accent-blue: #00c6ff; --text-muted: #94a3b8;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: var(--bg-color); color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; }
         .chat-container { width: 100%; max-width: 520px; height: 100vh; display: flex; flex-direction: column; border-inline: 1px solid var(--border-color); }
-        .header { padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); }
-        
-        .member-bar { background: #0f172a; padding: 8px 12px; border-bottom: 1px solid var(--border-color); display: flex; gap: 8px; overflow-x: auto; }
-        .member-chip { background: var(--border-color); padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; white-space: nowrap; }
-        .role-badge { font-size: 0.65rem; padding: 1px 4px; border-radius: 4px; font-weight: bold; }
+        .header { padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--card-bg); }
+        .header a { color: white; text-decoration: none; font-weight: bold; margin-right: 8px; }
+        .my-name { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+
+        .role-badge { font-size: 0.65rem; padding: 1px 5px; border-radius: 4px; font-weight: bold; margin-left: 4px; }
         .role-owner { background: #ef4444; color: white; }
         .role-sub { background: #f59e0b; color: black; }
-        
+
+        .manage-box { background: #0f172a; border-bottom: 1px solid var(--border-color); padding: 10px 12px; font-size: 0.8rem; }
+        .manage-box summary { cursor: pointer; color: var(--accent-blue); font-weight: bold; }
+        .manage-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+        .manage-row:last-child { border-bottom: none; }
+        .manage-btns { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+        .mini-btn { border: none; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; cursor: pointer; }
+        .btn-sub { background: #f59e0b; color: black; }
+        .btn-ban { background: #ef4444; color: white; }
+        .btn-gray { background: var(--border-color); color: white; }
+        .manage-title { margin: 10px 0 4px; color: var(--text-muted); font-weight: bold; }
+
         .msg-list { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; }
         .msg-wrapper { display: flex; flex-direction: column; max-width: 75%; }
         .my-wrapper { align-self: flex-end; align-items: flex-end; }
         .other-wrapper { align-self: flex-start; align-items: flex-start; }
-
-        .sender-name { font-size: 0.7rem; color: #94a3b8; margin-bottom: 3px; }
+        .sender-name { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 3px; }
         .msg-box-row { display: flex; align-items: flex-end; gap: 5px; }
-
-        .msg-item { padding: 8px 12px; border-radius: 12px; font-size: 0.85rem; word-break: break-all; }
+        .msg-item { padding: 8px 12px; border-radius: 12px; font-size: 0.85rem; word-break: break-all; user-select: none; }
         .my-msg { background: var(--accent-blue); color: black; font-weight: 500; border-bottom-right-radius: 2px; }
         .other-msg { background: var(--card-bg); border: 1px solid var(--border-color); border-bottom-left-radius: 2px; }
-        
-        .msg-img { max-width: 200px; max-height: 200px; border-radius: 10px; object-fit: cover; margin-top: 4px; border: 1px solid var(--border-color); }
-        
-        /* 🟡 안 읽은 사람 수 및 시간 안내 */
-        .msg-meta { font-size: 0.65rem; color: #64748b; display: flex; flex-direction: column; }
-        .unread-cnt { color: var(--unread-yellow); font-weight: bold; font-size: 0.7rem; }
+        .deletable { cursor: pointer; }
+        .msg-meta { font-size: 0.65rem; color: #64748b; }
+        .empty-text { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-top: 40px; }
 
-        .input-box { padding: 10px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 6px; background: var(--card-bg); }
-        .input-row { display: flex; gap: 8px; align-items: center; }
-        .input-style { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 12px; color: white; outline: none; }
+        .input-box { padding: 10px; border-top: 1px solid var(--border-color); display: flex; gap: 8px; background: var(--card-bg); }
+        .input-style { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; color: white; outline: none; flex: 1; font-size: 0.9rem; }
         .btn-send { background: var(--accent-blue); border: none; padding: 8px 16px; border-radius: 10px; font-weight: bold; cursor: pointer; color: black; }
+        .hint { font-size: 0.65rem; color: #64748b; text-align: center; padding: 0 10px 8px; background: var(--card-bg); }
+
+        .name-setup { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .name-card { width: 100%; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 24px; text-align: center; }
+        .name-card h2 { font-size: 1.1rem; margin-bottom: 8px; }
+        .name-card p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px; }
+        .name-card form { display: flex; gap: 8px; }
     </style>
 </head>
 <body>
 <div class="chat-container">
     <div class="header">
         <div>
-            <a href="/" style="color:white; text-decoration:none; font-weight:bold; margin-right:8px;">⬅️</a>
-            <strong>🌐 {{ room.room_name }}</strong>
+            <a href="{{ url_for('open_chat_list') }}">⬅️</a>
+            <strong>🌐 {{ room.title }}</strong>
         </div>
-        <span style="font-size:0.75rem; color:#94a3b8;">참여자 {{ members|length }}명</span>
+        {% if anon_name %}
+            <span class="my-name">
+                나: {{ anon_name }}
+                {% if is_host %}<span class="role-badge role-owner">방장</span>
+                {% elif is_sub_host %}<span class="role-badge role-sub">부방장</span>{% endif %}
+            </span>
+        {% endif %}
     </div>
 
-    <!-- 👥 오픈채팅 참여자 목록 (방장은 더블클릭 관리) -->
-    <div class="member-bar">
-        {% for m in members %}
-            <div class="member-chip" ondblclick="manageMember('{{ m.user_id }}', '{{ m.nickname }}', '{{ m.role }}')">
-                <img src="/static/uploads/{{ m.profile_img or 'default.png' }}" style="width:18px; height:18px; border-radius:50%;">
-                <span>{{ m.nickname }}</span>
-                {% if m.role == 'owner' %}<span class="role-badge role-owner">방장</span>
-                {% elif m.role == 'sub_owner' %}<span class="role-badge role-sub">부방장</span>{% endif %}
+    {% if not anon_name %}
+        <!-- 익명 닉네임 설정 화면 -->
+        <div class="name-setup">
+            <div class="name-card">
+                <h2>🎭 익명 닉네임 설정</h2>
+                <p>이 방에서 사용할 닉네임을 정해주세요.<br>다른 사람에게는 이 닉네임만 보여요.</p>
+                <form method="POST" action="{{ url_for('open_chat_room', room_id=room.id) }}">
+                    <input type="text" name="custom_name" class="input-style" placeholder="익명 닉네임" maxlength="50" required autocomplete="off">
+                    <button type="submit" class="btn-send">입장</button>
+                </form>
             </div>
-        {% endfor %}
-    </div>
+        </div>
+    {% else %}
 
-    <!-- 메시지 및 사진 출력 영역 -->
-    <div class="msg-list" id="msgContainer">
-        {% for m in messages %}
-            <div class="msg-wrapper {% if m.sender_real_id == user %}my-wrapper{% else %}other-wrapper{% endif %}">
-                <div class="sender-name">{{ m.sender_anon }}</div>
-                
-                <div class="msg-box-row" style="flex-direction: {% if m.sender_real_id == user %}row-reverse{% else %}row{% endif %};">
-                    <div class="msg-item {% if m.sender_real_id == user %}my-msg{% else %}other-msg{% endif %}">
-                        {% if m.message %}{{ m.message }}<br>{% endif %}
-                        {% if m.image_url %}
-                            <a href="/static/uploads/{{ m.image_url }}" target="_blank">
-                                <img src="/static/uploads/{{ m.image_url }}" class="msg-img">
-                            </a>
+        {% if is_host or is_sub_host %}
+        <!-- 방장/부방장 관리 메뉴 -->
+        <details class="manage-box">
+            <summary>⚙️ 방 관리 메뉴</summary>
+
+            <div class="manage-title">👥 참여자</div>
+            {% for p in participants %}
+                {% if p.sender_real_id != my_id and p.sender_real_id != room.created_by %}
+                <div class="manage-row">
+                    <span>
+                        {{ p.sender_anon }}
+                        {% if p.sender_real_id == room.sub_host %}<span class="role-badge role-sub">부방장</span>{% endif %}
+                    </span>
+                    <div class="manage-btns">
+                        {% if is_host %}
+                            <form method="POST" action="{{ url_for('open_chat_set_sub', room_id=room.id) }}">
+                                <input type="hidden" name="target_user" value="{{ p.sender_real_id }}">
+                                {% if p.sender_real_id == room.sub_host %}
+                                    <input type="hidden" name="action" value="dismiss">
+                                    <button type="submit" class="mini-btn btn-gray">부방장 해제</button>
+                                {% else %}
+                                    <input type="hidden" name="action" value="appoint">
+                                    <button type="submit" class="mini-btn btn-sub">부방장 임명</button>
+                                {% endif %}
+                            </form>
                         {% endif %}
-                    </div>
-                    
-                    <!-- 🟡 안 읽은 인원 수 및 시간 표시 -->
-                    <div class="msg-meta" style="text-align: {% if m.sender_real_id == user %}right{% else %}left{% endif %};">
-                        {% if m.unread_cnt > 0 %}
-                            <span class="unread-cnt">{{ m.unread_cnt }}</span>
-                        {% endif %}
-                        <span>{{ m.created_at.strftime('%H:%M') }}</span>
+                        <form method="POST" action="{{ url_for('open_chat_ban_user', room_id=room.id) }}" onsubmit="return confirm('{{ p.sender_anon }}님을 강퇴하고 차단할까요?');">
+                            <input type="hidden" name="target_user" value="{{ p.sender_real_id }}">
+                            <button type="submit" class="mini-btn btn-ban">강퇴</button>
+                        </form>
                     </div>
                 </div>
-            </div>
-        {% endfor %}
-    </div>
+                {% endif %}
+            {% else %}
+                <div class="manage-row"><span style="color: var(--text-muted);">아직 대화한 참여자가 없습니다.</span></div>
+            {% endfor %}
 
-    <!-- 입력창 (텍스트 + 📷 사진 업로드) -->
-    <form action="/open_chat/{{ room.id }}/send" method="POST" enctype="multipart/form-data" class="input-box">
-        <div class="input-row">
-            <input type="text" name="anon_name" placeholder="익명 닉네임" class="input-style" style="width: 100px;" required>
-            <input type="text" name="message" placeholder="메시지 입력..." class="input-style" style="flex:1;" autocomplete="off">
+            {% if is_host %}
+                <div class="manage-title">🚫 차단된 유저</div>
+                {% for b in banned_users %}
+                    <div class="manage-row">
+                        <span>{{ b.nickname or '알 수 없음' }}</span>
+                        <form method="POST" action="{{ url_for('open_chat_unban_user', room_id=room.id) }}">
+                            <input type="hidden" name="target_user" value="{{ b.username }}">
+                            <button type="submit" class="mini-btn btn-gray">차단 해제</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <div class="manage-row"><span style="color: var(--text-muted);">차단된 유저가 없습니다.</span></div>
+                {% endfor %}
+
+                <form method="POST" action="{{ url_for('delete_open_room', room_id=room.id) }}" onsubmit="return confirm('이 오픈채팅방을 완전히 삭제할까요? 되돌릴 수 없습니다.');" style="margin-top: 10px;">
+                    <button type="submit" class="mini-btn btn-ban" style="width: 100%; padding: 8px;">🗑️ 방 삭제하기</button>
+                </form>
+            {% endif %}
+        </details>
+        {% endif %}
+
+        <!-- 메시지 목록 -->
+        <div class="msg-list" id="msgContainer">
+            {% for m in messages %}
+                {% set mine = (m.sender_real_id == my_id) %}
+                <div class="msg-wrapper {% if mine %}my-wrapper{% else %}other-wrapper{% endif %}" id="msg-box-{{ m.id }}">
+                    <div class="sender-name">
+                        {{ m.sender_anon }}
+                        {% if m.sender_real_id == room.created_by %}<span class="role-badge role-owner">방장</span>
+                        {% elif m.sender_real_id == room.sub_host %}<span class="role-badge role-sub">부방장</span>{% endif %}
+                    </div>
+                    <div class="msg-box-row" style="flex-direction: {% if mine %}row-reverse{% else %}row{% endif %};">
+                        <div class="msg-item {% if mine %}my-msg{% else %}other-msg{% endif %} {% if mine or is_host or is_sub_host %}deletable{% endif %}" data-msg-id="{{ m.id }}">{{ m.message }}</div>
+                        <div class="msg-meta">{{ m.created_at.strftime('%H:%M') if m.created_at else '' }}</div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="empty-text">🌿 첫 메시지를 남겨보세요!</div>
+            {% endfor %}
+        </div>
+
+        <!-- 입력창 -->
+        <form action="{{ url_for('send_open_message', room_id=room.id) }}" method="POST" class="input-box">
+            <input type="text" name="message" placeholder="메시지 입력..." class="input-style" maxlength="2000" required autocomplete="off">
             <button type="submit" class="btn-send">전송</button>
-        </div>
-        <div class="input-row" style="justify-content: space-between;">
-            <label style="font-size:0.75rem; color:var(--accent-blue); cursor:pointer;">
-                📷 사진 파일 첨부
-                <input type="file" name="image" accept="image/*" style="display:none;" onchange="alert('사진이 선택되었습니다!')">
-            </label>
-            <span style="font-size:0.65rem; color:#64748b;">* 방장은 유저 더블클릭 시 관리 메뉴 표출</span>
-        </div>
-    </form>
+        </form>
+        <div class="hint">* 메시지를 두 번 누르면 삭제할 수 있어요</div>
+    {% endif %}
 </div>
 
 <script>
     const container = document.getElementById('msgContainer');
-    container.scrollTop = container.scrollHeight;
+    if (container) container.scrollTop = container.scrollHeight;
 
-    const currentRole = "{{ current_role }}";
-    const roomId = "{{ room.id }}";
-
-    function manageMember(targetUser, targetNickname, targetRole) {
-        if (currentRole !== 'owner' && currentRole !== 'sub_owner') return;
-        if (targetRole === 'owner') return;
-
-        let menuText = `[ ${targetNickname} 관리 ]\n원하는 작업의 번호를 입력하세요:\n`;
-        if (currentRole === 'owner') {
-            menuText += targetRole === 'sub_owner' ? "1. 부방장 해제\n" : "1. 부방장 임명\n";
-        }
-        menuText += "2. 방에서 강퇴 (차단)";
-
-        const choice = prompt(menuText);
-        
-        if (choice === '1' && currentRole === 'owner') {
-            const nextRole = targetRole === 'sub_owner' ? 'member' : 'sub_owner';
-            fetch(`/open_chat/${roomId}/role`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `target_user=${targetUser}&role=${nextRole}`
-            }).then(() => location.reload());
-        } else if (choice === '2') {
-            if (confirm(`${targetNickname}님을 정말 강퇴하시겠습니까?`)) {
-                fetch(`/open_chat/${roomId}/kick`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `target_user=${targetUser}`
-                }).then(() => location.reload());
-            }
-        }
-    }
+    document.querySelectorAll('.deletable').forEach(el => {
+        el.addEventListener('dblclick', function () {
+            const messageId = this.getAttribute('data-msg-id');
+            if (!confirm('이 메시지를 삭제하시겠습니까?')) return;
+            fetch(`/delete_chat_message/open/${messageId}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const box = document.getElementById(`msg-box-${messageId}`);
+                        if (box) box.remove();
+                    } else {
+                        alert('삭제 실패: ' + data.message);
+                    }
+                })
+                .catch(() => alert('서버와 연결할 수 없습니다.'));
+        });
+    });
 </script>
 </body>
 </html>
