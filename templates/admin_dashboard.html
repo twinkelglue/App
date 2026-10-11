@@ -42,16 +42,22 @@
                 <td>{{ u.nickname }}</td>
                 <td>{{ u.bio if u.bio else '' }}</td>
                 <td>
-                    {% if u.is_active %}
+                    {% if u.is_banned %}
+                        <span class="status-banned">영구 차단됨</span>
+                    {% elif u.is_active %}
                         <span class="status-active">정상 활동중</span>
                     {% else %}
-                        <span class="status-banned">차단됨(탈퇴)</span>
+                        <span style="color: gray; font-weight: bold;">탈퇴</span>
                     {% endif %}
                 </td>
                 <td>
                     {% if u.is_active %}
                     <form action="/admin/ban_user/{{ u.username }}" method="POST" onsubmit="return confirm('이 유저를 정말 서비스에서 영구 추방하시겠습니까?');">
                         <button type="submit" class="btn-danger">🚫 즉시 차단</button>
+                    </form>
+                    {% elif u.is_banned %}
+                    <form action="{{ url_for('admin_unban_user', username=u.username) }}" method="POST" onsubmit="return confirm('이 유저의 차단을 해제하시겠습니까?');">
+                        <button type="submit" style="background-color: #3498db; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px;">✅ 차단 해제</button>
                     </form>
                     {% else %}
                         -
@@ -70,6 +76,7 @@
                 <th>방 ID</th>
                 <th>오픈챗방 이름</th>
                 <th>개설자(방장)</th>
+                <th>제어 조치</th>
             </tr>
         </thead>
         <tbody>
@@ -77,7 +84,12 @@
             <tr>
                 <td>{{ r.id }}</td>
                 <td><strong>{{ r.title }}</strong></td>
-                <td>@{{ r.created_by }}</td>
+                <td>@{{ r.created_by or '-' }}</td>
+                <td>
+                    <form action="{{ url_for('delete_open_room', room_id=r.id) }}" method="POST" onsubmit="return confirm('이 오픈채팅방을 강제 삭제하시겠습니까?');">
+                        <button type="submit" class="btn-danger">🗑️ 삭제</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -91,6 +103,7 @@
                 <th>방 ID</th>
                 <th>단톡방 이름</th>
                 <th>생성자</th>
+                <th>제어 조치</th>
             </tr>
         </thead>
         <tbody>
@@ -98,7 +111,12 @@
             <tr>
                 <td>{{ g.id }}</td>
                 <td>{{ g.room_name }}</td>
-                <td>@{{ g.created_by }}</td>
+                <td>@{{ g.created_by or '-' }}</td>
+                <td>
+                    <form action="{{ url_for('admin_delete_group', room_id=g.id) }}" method="POST" onsubmit="return confirm('이 단톡방을 강제 삭제하시겠습니까?');">
+                        <button type="submit" class="btn-danger">🗑️ 삭제</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
