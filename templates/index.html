@@ -123,6 +123,32 @@
             border: 1px solid var(--border-color);
         }
 
+        /* 커뮤니티 게시판 */
+        .post-form textarea {
+            width: 100%; background-color: var(--bg-color); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 12px; color: white; font-size: 0.9rem; font-family: inherit;
+            resize: vertical; outline: none; margin-bottom: 8px;
+        }
+        .post-form-bottom { display: flex; justify-content: space-between; align-items: center; }
+        .char-count { font-size: 0.75rem; color: var(--text-muted); }
+        .post-card {
+            background-color: var(--bg-color); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 14px; margin-bottom: 10px;
+        }
+        .post-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .post-author { display: flex; align-items: center; gap: 6px; text-decoration: none; color: white; }
+        .post-time { font-size: 0.75rem; color: var(--text-muted); }
+        .post-content { font-size: 0.92rem; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+        .post-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .post-img { display: block; width: 100%; max-height: 360px; object-fit: cover; border-radius: 10px; background: var(--border-color); }
+        .post-img + .post-content { margin-top: 10px; }
+        .action-btn {
+            background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-muted);
+            padding: 6px 12px; border-radius: 16px; font-size: 0.8rem; font-weight: bold;
+            cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
+        }
+        .action-btn.liked { color: #ff4d6d; border-color: rgba(255, 77, 109, 0.5); background: rgba(255, 77, 109, 0.1); }
+
         .empty-text {
             color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 20px 0;
         }
@@ -258,11 +284,49 @@
                     <a href="{{ url_for('open_chat_list') }}" class="btn" style="width: 100%; text-align: center;">오픈채팅 광장 둘러보기</a>
                 </div>
 
-                <div class="section-card" style="opacity: 0.6;">
-                    <div class="section-title">📢 커뮤니티 게시판 (추후 예정)</div>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">
-                        자유 게시판 및 에스크 기능이 업데이트될 예정입니다.
-                    </p>
+                <!-- 📝 글쓰기 -->
+                <div class="section-card">
+                    <div class="section-title">📝 커뮤니티 게시판</div>
+                    <form action="{{ url_for('create_community_post') }}" method="POST" class="post-form" enctype="multipart/form-data">
+                        <textarea name="content" id="postContent" rows="3" maxlength="2000" placeholder="무슨 생각을 하고 있나요?"></textarea>
+                        <img id="postPreview" class="post-img" style="display: none; margin-bottom: 8px;" alt="미리보기">
+                        <div class="post-form-bottom">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <label class="action-btn" style="margin: 0;">📷 사진
+                                    <input type="file" name="image" id="postImage" accept="image/*" style="display: none;">
+                                </label>
+                                <span class="char-count"><span id="charCount">0</span> / 2000</span>
+                            </div>
+                            <button type="submit" class="btn">게시하기</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- 📰 게시글 목록 -->
+                <div class="section-card">
+                    <div class="section-title">📰 최신 글</div>
+                    {% for post in posts %}
+                        <div class="post-card">
+                            <div class="post-head">
+                                <a href="{{ url_for('user_profile', username=post.author_id) }}" class="post-author">
+                                    <span class="nickname">{{ post.nickname }}</span>
+                                    <span class="username">@{{ post.author_id }}</span>
+                                </a>
+                                <span class="post-time">{{ post.created_at.strftime('%m-%d %H:%M') if post.created_at else '' }}</span>
+                            </div>
+                            {% if post.image_url %}<a href="{{ url_for('community_post', post_id=post.id) }}"><img src="{{ post.image_url }}" class="post-img" alt="첨부 사진" loading="lazy"></a>{% endif %}
+                            {% if post.content %}<div class="post-content">{{ post.content }}</div>{% endif %}
+                            <div class="post-actions">
+                                <button type="button" class="action-btn like-btn {% if post.is_liked %}liked{% endif %}" data-post-id="{{ post.id }}">
+                                    <span class="like-icon">{% if post.is_liked %}❤️{% else %}🤍{% endif %}</span>
+                                    <span class="like-count">{{ post.like_count }}</span>
+                                </button>
+                                <a href="{{ url_for('community_post', post_id=post.id) }}" class="action-btn">💬 댓글 {{ post.comment_count }}</a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="empty-text">아직 게시글이 없어요. 첫 글을 남겨보세요! ✨</div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
@@ -297,6 +361,65 @@
             document.getElementById('tab-community').classList.add('active');
         }
     }
+
+    // 주소에 ?tab=community 가 있으면 해당 탭 열기
+    const startTab = new URLSearchParams(location.search).get('tab');
+    if (startTab && document.getElementById('tab-' + startTab)) {
+        switchTab(startTab);
+    }
+
+    // 글자 수 표시
+    const postContent = document.getElementById('postContent');
+    if (postContent) {
+        postContent.addEventListener('input', () => {
+            document.getElementById('charCount').textContent = postContent.value.length;
+        });
+    }
+
+    // 게시글 사진 미리보기
+    const postImage = document.getElementById('postImage');
+    if (postImage) {
+        postImage.addEventListener('change', () => {
+            const file = postImage.files && postImage.files[0];
+            const preview = document.getElementById('postPreview');
+            if (!file) { preview.style.display = 'none'; return; }
+            if (file.size > 15 * 1024 * 1024) {
+                alert('사진은 15MB 이하만 올릴 수 있어요.');
+                postImage.value = '';
+                preview.style.display = 'none';
+                return;
+            }
+            preview.src = URL.createObjectURL(file);
+            preview.style.display = 'block';
+        });
+        postImage.closest('form').addEventListener('submit', e => {
+            if (!postContent.value.trim() && !(postImage.files && postImage.files[0])) {
+                e.preventDefault();
+                alert('내용을 입력하거나 사진을 골라주세요.');
+            }
+        });
+    }
+
+    // 좋아요 버튼
+    document.querySelectorAll('.like-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const postId = this.getAttribute('data-post-id');
+            this.disabled = true;
+            fetch(`/community/post/${postId}/like`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        this.classList.toggle('liked', data.is_liked);
+                        this.querySelector('.like-icon').textContent = data.is_liked ? '❤️' : '🤍';
+                        this.querySelector('.like-count').textContent = data.like_count;
+                    } else {
+                        alert(data.message || '좋아요 처리에 실패했습니다.');
+                    }
+                })
+                .catch(() => alert('서버와 연결할 수 없습니다.'))
+                .finally(() => { this.disabled = false; });
+        });
+    });
 </script>
 
 </body>
