@@ -380,7 +380,28 @@ def init_db():
               AND NOT EXISTS (SELECT 1 FROM community_posts WHERE image_url = '/img/' || i.key)
               AND NOT EXISTS (SELECT 1 FROM users WHERE profile_img = '/img/' || i.key)
         """)
+# 진실게임 (공개/비밀방) 테이블 생성
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS truth_rooms (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(100) NOT NULL,
+                password VARCHAR(50) DEFAULT NULL,
+                created_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS truth_room_messages (
+                id SERIAL PRIMARY KEY,
+                room_id INT REFERENCES truth_rooms(id) ON DELETE CASCADE,
+                sender_id VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
+                target_nickname VARCHAR(50) NOT NULL,
+                question TEXT NOT NULL,
+                answer TEXT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
         cur.execute("""
             INSERT INTO users (username, password, nickname, is_active, is_banned)
             VALUES (%s, %s, %s, TRUE, FALSE)
@@ -449,11 +470,12 @@ def index():
     all_users = []
     dm_list = []
     posts = []
+    truth_rooms = []
     unread_total = 0
 
     if not user:
         return render_template('index.html', my_rooms=my_rooms, all_users=all_users,
-                               dm_list=dm_list, unread_total=unread_total, user=user, posts=posts)
+                               dm_list=dm_list, unread_total=unread_total, user=user, posts=posts, truth_rooms=truth_rooms)
 
     with get_db_connection() as conn, conn.cursor() as cur:
         try:
@@ -466,6 +488,12 @@ def index():
                 ORDER BY cr.id DESC
             """, (user,))
             my_rooms = cur.fetchall()
+            cur.execute("""
+            SELECT id, title, (password IS NOT NULL AND password != '') AS is_private, created_at 
+            FROM truth_rooms 
+            ORDER BY id DESC
+        """)
+        truth_rooms = cur.fetchall()
         except psycopg.Error as e:
             conn.rollback()
             app.logger.error(f'단톡방 목록 오류: {e}')
