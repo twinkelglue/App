@@ -1859,97 +1859,66 @@ def truth_create():
 
 
 @app.route('/truth/room/<int:room_id>', methods=['GET', 'POST'])
-@login_required
-def truth_room(room_id):
-    user = session['user']
-    room_url = url_for('truth_room', room_id=room_id)
+def truth_room_view(room_id):
+    user = session.get('user')
+    if not user: 
+        return "<script>alert('로그인이 필요합니다.'); location.href='/login';</script>"
 
-    with get_db_connection() as conn, conn.cursor() as cur:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
         cur.execute("SELECT id, title, password, created_by FROM truth_rooms WHERE id = %s", (room_id,))
         room = cur.fetchone()
+
         if not room:
-            return js_alert('존재하지 않거나 삭제된 진실게임 방입니다.', url_for('index'), 404)
+            return "<script>alert('존재하지 않는 방입니다.'); location.href='/';</script>"
 
-        is_private = bool(room['password'])
-        unlocked = truth_unlocked(room_id, room['password'], room['created_by'], user)
+        # 튜플과 딕셔너리 반환 타입 모두 안전하게 처리
+        if isinstance(room, dict):
+            room_title = room.get('title')
+            room_pw = room.get('password')
+        else:
+            room_title = room[1]
+            room_pw = room[2]
 
+        # 비밀번호 검증
+        if room_pw:
+            input_pw = request.args.get('pw') or request.form.get('pw')
+            if input_pw != room_pw:
+                return "<script>alert('비밀번호가 올바르지 않습니다.'); history.back();</script>"
+
+        # 질문 등록 처리
         if request.method == 'POST':
-            action = request.form.get('action', 'ask')
-
-            # ---- 비밀방 비밀번호 확인 ----
-            if action == 'unlock':
-                if unlocked:
-                    return redirect(room_url)
-                key = (user, room_id)
-                wait_sec = truth_locked_seconds(key)
-                if wait_sec:
-                    return js_alert(f'비밀번호를 너무 많이 틀렸어요. {math.ceil(wait_sec / 60)}분 뒤에 다시 해주세요.',
-                                    room_url, 429)
-                try:
-                    ok = check_password_hash(room['password'], request.form.get('password', ''))
-                except (ValueError, TypeError):
-                    ok = False
-                if not ok:
-                    truth_record_fail(key)
-                    return js_alert('비밀번호가 맞지 않아요.', room_url, 403)
-                _truth_fails.pop(key, None)
-                session[f'truth_ok_{room_id}'] = True
-                return redirect(room_url)
-
-            # ---- 질문 등록 ----
-            if not unlocked:
-                return js_alert('비밀번호를 먼저 입력해주세요.', room_url, 403)
-
-            target = request.form.get('target_nickname', '').strip()
+            target_nickname = request.form.get('target_nickname', '익명').strip()
             question = request.form.get('question', '').strip()
-            if not target or not question:
-                return js_alert('질문할 사람의 닉네임과 질문 내용을 모두 입력해주세요.', room_url, 400)
-            if len(target) > 50:
-                return js_alert('닉네임은 50자 이하로 입력해주세요.', room_url, 400)
-            if len(question) > MAX_TRUTH_TEXT_LEN:
-                return js_alert(f'질문은 {MAX_TRUTH_TEXT_LEN}자 이하로 입력해주세요.', room_url, 400)
 
-            cur.execute("""
-                SELECT 1 FROM users
-                WHERE nickname = %s AND is_active = TRUE AND username <> %s
-                LIMIT 1
-            """, (target, ADMIN_USERNAME))
-            if not cur.fetchone():
-                return js_alert('그 닉네임을 쓰는 사람을 찾을 수 없어요. 닉네임을 정확히 적어주세요.', room_url, 404)
+            if question:
+                cur.execute("""
+                    INSERT INTO truth_room_messages (room_id, sender_id, target_nickname, question)
+                    VALUES (%s, %s, %s, %s)
+                """, (room_id, user, target_nickname, question))
+                conn.commit()
+                return redirect(url_for('truth_room_view', room_id=room_id, pw=room_pw))
 
-            cur.execute("""
-                INSERT INTO truth_room_messages (room_id, sender_id, target_nickname, question)
-                VALUES (%s, %s, %s, %s)
-            """, (room_id, user, target, question))
-            return redirect(room_url)
-
-        # ---- 방 보기 (GET) ----
-        room_info = {'id': room['id'], 'title': room['title'], 'is_private': is_private}
-        if not unlocked:
-            return render_template('truth_room.html', room=room_info, unlocked=False,
-                                   messages=[], my_id=user)
-
-        cur.execute("SELECT nickname FROM users WHERE username = %s", (user,))
-        me = cur.fetchone()
-        my_nickname = me['nickname'] if me else ''
-        is_moderator = (room['created_by'] == user or is_admin())
-
+        # 질문 목록 조회
         cur.execute("""
-            SELECT m.id, m.sender_id, u.nickname AS sender_nickname, m.target_nickname,
-                   m.question, m.answer, m.created_at
-            FROM truth_room_messages m
-            LEFT JOIN users u ON u.username = m.sender_id
-            WHERE m.room_id = %s
-            ORDER BY m.id DESC
-            LIMIT 200
+            SELECT id, room_id, sender_id, target_nickname, question, answer, created_at 
+            FROM truth_room_messages 
+            WHERE room_id = %s 
+            ORDER BY id DESC
         """, (room_id,))
         messages = cur.fetchall()
-        for m in messages:
-            m['can_answer'] = (not m['answer']) and (m['target_nickname'] == my_nickname or is_moderator)
 
-    return render_template('truth_room.html', room=room_info, unlocked=True,
-                           messages=messages, my_id=user, my_nickname=my_nickname)
+        room_data = {'id': room_id, 'title': room_title, 'password': room_pw}
+        return render_template('truth_room.html', room=room_data, messages=messages)
 
+    except Exception as e:
+        conn.rollback()
+        app.logger.error(f'방 조회 오류: {e}')
+        return f"<h2>페이지 로딩 오류:</h2><p>{str(e)}</p>", 500
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/truth/answer/<int:msg_id>', methods=['POST'])
 @login_required
