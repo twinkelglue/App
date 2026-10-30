@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ room.title }} - 진실게임</title>
+    <style>
+        :root {
+            --bg-color: #05070a;
+            --card-bg: #121620;
+            --text-color: #ffffff;
+            --text-muted: #94a3b8;
+            --accent-blue: #00c6ff;
+            --gradient-main: linear-gradient(135deg, #00c6ff, #0072ff, #00f260);
+            --border-color: #1e293b;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-color); color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0; display: flex; justify-content: center;
+        }
+        .wrap { width: 100%; max-width: 520px; min-height: 100vh; padding: 0 0 40px; border-inline: 1px solid var(--border-color); }
+
+        .top {
+            display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+            border-bottom: 1px solid var(--border-color); background: rgba(5, 7, 10, 0.9);
+            position: sticky; top: 0; backdrop-filter: blur(12px); z-index: 5;
+        }
+        .back { color: var(--text-color); text-decoration: none; font-size: 1.3rem; font-weight: bold; }
+        .title { flex: 1; font-weight: 700; font-size: 1.05rem; word-break: break-all; }
+        .badge {
+            font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 10px;
+            background: rgba(0, 198, 255, 0.12); color: var(--accent-blue); border: 1px solid rgba(0, 198, 255, 0.35);
+            white-space: nowrap;
+        }
+        .badge.private { background: rgba(251, 191, 36, 0.12); color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); }
+
+        .content { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 16px; }
+        .card h2 { margin: 0 0 6px; font-size: 1.05rem; }
+        .hint { color: var(--text-muted); font-size: 0.82rem; margin: 0 0 12px; line-height: 1.45; }
+
+        input[type="text"], input[type="password"], textarea {
+            width: 100%; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px;
+            padding: 11px 13px; color: #fff; font-size: 0.93rem; font-family: inherit; outline: none; margin-bottom: 8px;
+        }
+        textarea { resize: vertical; min-height: 70px; }
+        input:focus, textarea:focus { border-color: var(--accent-blue); }
+        .btn {
+            width: 100%; background: var(--gradient-main); color: #fff; border: none; padding: 11px;
+            border-radius: 10px; font-weight: 700; font-size: 0.95rem; cursor: pointer;
+        }
+        .btn-small { width: auto; padding: 8px 16px; font-size: 0.85rem; border-radius: 16px; }
+        .count { font-size: 0.75rem; color: var(--text-muted); text-align: right; margin: -2px 0 8px; }
+
+        .lock { text-align: center; padding: 28px 18px; }
+        .lock .big { font-size: 2.4rem; margin-bottom: 6px; }
+
+        .qa-title { font-weight: 700; font-size: 0.95rem; margin: 6px 2px 0; }
+        .qa { display: flex; flex-direction: column; gap: 10px; }
+        .q-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; }
+        .to { color: var(--accent-blue); font-weight: 700; }
+        .q-text, .a-text { white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 0.93rem; }
+        .q-text::before { content: "Q. "; color: var(--accent-blue); font-weight: 800; }
+        .answer-box { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color); }
+        .a-text::before { content: "A. "; color: #00f260; font-weight: 800; }
+        .waiting { color: var(--text-muted); font-size: 0.85rem; }
+        .empty { text-align: center; color: var(--text-muted); font-size: 0.88rem; padding: 24px 0; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="top">
+        <a href="{{ url_for('index', tab='community') }}" class="back" aria-label="뒤로">❮</a>
+        <div class="title">{% if room.is_private %}🔒{% else %}🎭{% endif %} {{ room.title }}</div>
+        <span class="badge {% if room.is_private %}private{% endif %}">{{ '비밀방' if room.is_private else '공개방' }}</span>
+    </div>
+
+    <div class="content">
+    {% if not unlocked %}
+        <!-- 🔒 비밀번호 입력 -->
+        <div class="card lock">
+            <div class="big">🔒</div>
+            <h2>비밀방이에요</h2>
+            <p class="hint">입장하려면 방 비밀번호를 입력해주세요.</p>
+            <form method="POST" action="{{ url_for('truth_room', room_id=room.id) }}">
+                <input type="hidden" name="action" value="unlock">
+                <input type="password" name="password" placeholder="방 비밀번호" required maxlength="50" autocomplete="off">
+                <button type="submit" class="btn">입장하기</button>
+            </form>
+        </div>
+    {% else %}
+        <!-- ❓ 질문 작성 -->
+        <div class="card">
+            <h2>❓ 진실을 물어보세요</h2>
+            <p class="hint">질문할 사람의 <b>닉네임</b>을 정확히 적어주세요. 지목된 사람(또는 방장)이 답변할 수 있어요.</p>
+            <form method="POST" action="{{ url_for('truth_room', room_id=room.id) }}">
+                <input type="hidden" name="action" value="ask">
+                <input type="text" name="target_nickname" placeholder="질문할 사람의 닉네임" required maxlength="50" autocomplete="off">
+                <textarea name="question" id="questionInput" placeholder="질문 내용을 적어주세요..." required maxlength="500"></textarea>
+                <div class="count"><span id="questionCount">0</span> / 500</div>
+                <button type="submit" class="btn">질문 보내기</button>
+            </form>
+        </div>
+
+        <!-- 📋 질문 / 답변 목록 -->
+        <div class="qa-title">📋 질문 &amp; 답변 ({{ messages|length }})</div>
+        <div class="qa">
+            {% for m in messages %}
+            <div class="card">
+                <div class="q-meta">
+                    <span>To. <span class="to">{{ m.target_nickname }}</span></span>
+                    <span>{{ m.sender_nickname or m.sender_id }} · {{ m.created_at.strftime('%m-%d %H:%M') if m.created_at else '' }}</span>
+                </div>
+                <div class="q-text">{{ m.question }}</div>
+
+                <div class="answer-box">
+                    {% if m.answer %}
+                        <div class="a-text">{{ m.answer }}</div>
+                    {% elif m.can_answer %}
+                        <form method="POST" action="{{ url_for('truth_answer', msg_id=m.id) }}">
+                            <textarea name="answer" placeholder="솔직하게 답변해주세요..." required maxlength="500" style="min-height: 56px;"></textarea>
+                            <button type="submit" class="btn btn-small">답변 등록</button>
+                        </form>
+                    {% else %}
+                        <div class="waiting">⏳ 아직 답변이 없어요</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="empty">아직 질문이 없어요. 첫 질문을 던져보세요! 🔥</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    </div>
+</div>
+
+<script>
+    const qInput = document.getElementById('questionInput');
+    if (qInput) {
+        qInput.addEventListener('input', () => {
+            document.getElementById('questionCount').textContent = qInput.value.length;
+        });
+    }
+</script>
+</body>
+</html>
