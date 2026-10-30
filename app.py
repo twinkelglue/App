@@ -4,6 +4,7 @@ import json
 import hmac
 import io
 import secrets
+import math
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify, Response, abort
@@ -380,12 +381,13 @@ def init_db():
               AND NOT EXISTS (SELECT 1 FROM community_posts WHERE image_url = '/img/' || i.key)
               AND NOT EXISTS (SELECT 1 FROM users WHERE profile_img = '/img/' || i.key)
         """)
-# 진실게임 (공개/비밀방) 테이블 생성
+        # 진실게임 (공개/비밀방) 테이블 생성
+        # password 칸에는 '암호화된 값(해시)'이 들어가서 길이가 길다 -> 255자
         cur.execute("""
             CREATE TABLE IF NOT EXISTS truth_rooms (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(100) NOT NULL,
-                password VARCHAR(50) DEFAULT NULL,
+                password VARCHAR(255) DEFAULT NULL,
                 created_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -402,6 +404,10 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # 이미 예전 크기(50자)로 만들어진 테이블이 있어도 넓혀 준다 (여러 번 실행해도 안전)
+        cur.execute("ALTER TABLE truth_rooms ALTER COLUMN password TYPE VARCHAR(255)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_truth_messages_room ON truth_room_messages (room_id);")
+
         cur.execute("""
             INSERT INTO users (username, password, nickname, is_active, is_banned)
             VALUES (%s, %s, %s, TRUE, FALSE)
@@ -488,12 +494,6 @@ def index():
                 ORDER BY cr.id DESC
             """, (user,))
             my_rooms = cur.fetchall()
-            cur.execute("""
-            SELECT id, title, (password IS NOT NULL AND password != '') AS is_private, created_at 
-            FROM truth_rooms 
-            ORDER BY id DESC
-        """)
-        truth_rooms = cur.fetchall()
         except psycopg.Error as e:
             conn.rollback()
             app.logger.error(f'단톡방 목록 오류: {e}')
@@ -561,8 +561,20 @@ def index():
             conn.rollback()
             app.logger.error(f'커뮤니티 목록 오류: {e}')
 
+        try:
+            cur.execute("""
+                SELECT id, title, (password IS NOT NULL AND password != '') AS is_private, created_at
+                FROM truth_rooms
+                ORDER BY id DESC
+            """)
+            truth_rooms = cur.fetchall()
+        except psycopg.Error as e:
+            conn.rollback()
+            app.logger.error(f'진실게임 방 목록 오류: {e}')
+
     return render_template('index.html', my_rooms=my_rooms, all_users=all_users,
-                           dm_list=dm_list, unread_total=unread_total, user=user, posts=posts)
+                           dm_list=dm_list, unread_total=unread_total, user=user, posts=posts,
+                           truth_rooms=truth_rooms)
 
 
 # ----------------------------------------------------------------
@@ -1775,6 +1787,207 @@ def delete_message(chat_type, message_id):
     except psycopg.Error as e:
         app.logger.error(f'메시지 삭제 오류: {e}')
         return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+
+
+# ----------------------------------------------------------------
+# 🎭 진실게임 방 (공개 / 비밀방)
+#  - 비밀방 비밀번호는 그대로 저장하지 않고 암호화(해시)해서 저장한다.
+#  - 질문은 '닉네임'을 지목해서 보내고, 지목된 사람(또는 방장/관리자)이 답한다.
+# ----------------------------------------------------------------
+MAX_TRUTH_TITLE_LEN = 100
+MAX_TRUTH_PASSWORD_LEN = 50
+MIN_TRUTH_PASSWORD_LEN = 4
+MAX_TRUTH_TEXT_LEN = 500
+TRUTH_MAX_FAILS = 5        # 비밀번호를 이만큼 틀리면
+TRUTH_LOCK_SEC = 300       # 5분 동안 입력을 막는다
+_truth_fails = {}          # (아이디, 방번호) -> {'count': 틀린 횟수, 'locked_until': 풀리는 시각}
+
+
+def truth_locked_seconds(key):
+    info = _truth_fails.get(key)
+    if not info:
+        return 0
+    remain = info['locked_until'] - time.time()
+    return int(remain) + 1 if remain > 0 else 0
+
+
+def truth_record_fail(key):
+    if len(_truth_fails) > 5000:
+        _truth_fails.clear()
+    info = _truth_fails.setdefault(key, {'count': 0, 'locked_until': 0})
+    info['count'] += 1
+    if info['count'] >= TRUTH_MAX_FAILS:
+        info['count'] = 0
+        info['locked_until'] = time.time() + TRUTH_LOCK_SEC
+
+
+def truth_unlocked(room_id, password_hash, created_by, user):
+    """공개방이거나, 방장/관리자이거나, 비밀번호를 이미 맞춘 사람이면 True"""
+    if not password_hash:
+        return True
+    return created_by == user or is_admin() or session.get(f'truth_ok_{room_id}') is True
+
+
+@app.route('/truth/create', methods=['POST'])
+@login_required
+def truth_create():
+    user = session['user']
+    title = request.form.get('title', '').strip()
+    password = request.form.get('password', '').strip()
+
+    if not title:
+        return js_alert('방 제목을 입력해주세요.', status=400)
+    if len(title) > MAX_TRUTH_TITLE_LEN:
+        return js_alert(f'방 제목은 {MAX_TRUTH_TITLE_LEN}자 이하로 입력해주세요.', status=400)
+    if password and len(password) < MIN_TRUTH_PASSWORD_LEN:
+        return js_alert(f'비밀방 비밀번호는 {MIN_TRUTH_PASSWORD_LEN}자 이상이어야 해요. (공개방은 비워 두세요)', status=400)
+    if len(password) > MAX_TRUTH_PASSWORD_LEN:
+        return js_alert(f'비밀번호는 {MAX_TRUTH_PASSWORD_LEN}자 이하로 입력해주세요.', status=400)
+
+    hashed = generate_password_hash(password) if password else None
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO truth_rooms (title, password, created_by)
+            VALUES (%s, %s, %s) RETURNING id
+        """, (title, hashed, user))
+        room_id = cur.fetchone()['id']
+
+    if hashed:
+        session[f'truth_ok_{room_id}'] = True   # 만든 사람은 바로 입장
+    return redirect(url_for('truth_room', room_id=room_id))
+
+
+@app.route('/truth/room/<int:room_id>', methods=['GET', 'POST'])
+@login_required
+def truth_room(room_id):
+    user = session['user']
+    room_url = url_for('truth_room', room_id=room_id)
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, title, password, created_by FROM truth_rooms WHERE id = %s", (room_id,))
+        room = cur.fetchone()
+        if not room:
+            return js_alert('존재하지 않거나 삭제된 진실게임 방입니다.', url_for('index'), 404)
+
+        is_private = bool(room['password'])
+        unlocked = truth_unlocked(room_id, room['password'], room['created_by'], user)
+
+        if request.method == 'POST':
+            action = request.form.get('action', 'ask')
+
+            # ---- 비밀방 비밀번호 확인 ----
+            if action == 'unlock':
+                if unlocked:
+                    return redirect(room_url)
+                key = (user, room_id)
+                wait_sec = truth_locked_seconds(key)
+                if wait_sec:
+                    return js_alert(f'비밀번호를 너무 많이 틀렸어요. {math.ceil(wait_sec / 60)}분 뒤에 다시 해주세요.',
+                                    room_url, 429)
+                try:
+                    ok = check_password_hash(room['password'], request.form.get('password', ''))
+                except (ValueError, TypeError):
+                    ok = False
+                if not ok:
+                    truth_record_fail(key)
+                    return js_alert('비밀번호가 맞지 않아요.', room_url, 403)
+                _truth_fails.pop(key, None)
+                session[f'truth_ok_{room_id}'] = True
+                return redirect(room_url)
+
+            # ---- 질문 등록 ----
+            if not unlocked:
+                return js_alert('비밀번호를 먼저 입력해주세요.', room_url, 403)
+
+            target = request.form.get('target_nickname', '').strip()
+            question = request.form.get('question', '').strip()
+            if not target or not question:
+                return js_alert('질문할 사람의 닉네임과 질문 내용을 모두 입력해주세요.', room_url, 400)
+            if len(target) > 50:
+                return js_alert('닉네임은 50자 이하로 입력해주세요.', room_url, 400)
+            if len(question) > MAX_TRUTH_TEXT_LEN:
+                return js_alert(f'질문은 {MAX_TRUTH_TEXT_LEN}자 이하로 입력해주세요.', room_url, 400)
+
+            cur.execute("""
+                SELECT 1 FROM users
+                WHERE nickname = %s AND is_active = TRUE AND username <> %s
+                LIMIT 1
+            """, (target, ADMIN_USERNAME))
+            if not cur.fetchone():
+                return js_alert('그 닉네임을 쓰는 사람을 찾을 수 없어요. 닉네임을 정확히 적어주세요.', room_url, 404)
+
+            cur.execute("""
+                INSERT INTO truth_room_messages (room_id, sender_id, target_nickname, question)
+                VALUES (%s, %s, %s, %s)
+            """, (room_id, user, target, question))
+            return redirect(room_url)
+
+        # ---- 방 보기 (GET) ----
+        room_info = {'id': room['id'], 'title': room['title'], 'is_private': is_private}
+        if not unlocked:
+            return render_template('truth_room.html', room=room_info, unlocked=False,
+                                   messages=[], my_id=user)
+
+        cur.execute("SELECT nickname FROM users WHERE username = %s", (user,))
+        me = cur.fetchone()
+        my_nickname = me['nickname'] if me else ''
+        is_moderator = (room['created_by'] == user or is_admin())
+
+        cur.execute("""
+            SELECT m.id, m.sender_id, u.nickname AS sender_nickname, m.target_nickname,
+                   m.question, m.answer, m.created_at
+            FROM truth_room_messages m
+            LEFT JOIN users u ON u.username = m.sender_id
+            WHERE m.room_id = %s
+            ORDER BY m.id DESC
+            LIMIT 200
+        """, (room_id,))
+        messages = cur.fetchall()
+        for m in messages:
+            m['can_answer'] = (not m['answer']) and (m['target_nickname'] == my_nickname or is_moderator)
+
+    return render_template('truth_room.html', room=room_info, unlocked=True,
+                           messages=messages, my_id=user, my_nickname=my_nickname)
+
+
+@app.route('/truth/answer/<int:msg_id>', methods=['POST'])
+@login_required
+def truth_answer(msg_id):
+    user = session['user']
+    answer_text = request.form.get('answer', '').strip()
+
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT m.id, m.room_id, m.target_nickname, m.answer, r.password, r.created_by
+            FROM truth_room_messages m
+            JOIN truth_rooms r ON r.id = m.room_id
+            WHERE m.id = %s
+        """, (msg_id,))
+        msg = cur.fetchone()
+        if not msg:
+            return js_alert('존재하지 않는 질문입니다.', url_for('index'), 404)
+
+        room_url = url_for('truth_room', room_id=msg['room_id'])
+        if not truth_unlocked(msg['room_id'], msg['password'], msg['created_by'], user):
+            return js_alert('비밀번호를 먼저 입력해주세요.', room_url, 403)
+        if not answer_text:
+            return js_alert('답변을 입력해주세요.', room_url, 400)
+        if len(answer_text) > MAX_TRUTH_TEXT_LEN:
+            return js_alert(f'답변은 {MAX_TRUTH_TEXT_LEN}자 이하로 입력해주세요.', room_url, 400)
+        if msg['answer']:
+            return js_alert('이미 답변이 등록된 질문입니다.', room_url, 400)
+
+        cur.execute("SELECT nickname FROM users WHERE username = %s", (user,))
+        me = cur.fetchone()
+        my_nickname = me['nickname'] if me else ''
+        if not (my_nickname == msg['target_nickname'] or msg['created_by'] == user or is_admin()):
+            return js_alert('지목된 사람(또는 방장)만 답변할 수 있어요.', room_url, 403)
+
+        cur.execute("UPDATE truth_room_messages SET answer = %s WHERE id = %s AND answer IS NULL",
+                    (answer_text, msg_id))
+
+    return redirect(room_url)
 
 
 if __name__ == '__main__':
