@@ -284,6 +284,25 @@
                     <a href="{{ url_for('open_chat_list') }}" class="btn" style="width: 100%; text-align: center;">오픈채팅 광장 둘러보기</a>
                 </div>
 
+                <!-- 🎭 진실게임 방 (공개 / 비밀방) -->
+                <div class="section-card">
+                    <div class="section-title">🎭 진실게임 방</div>
+                    <form action="{{ url_for('truth_create') }}" method="POST" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+                        <input type="text" name="title" placeholder="방 제목" required maxlength="100" autocomplete="off" style="background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; color: white; outline: none;">
+                        <input type="password" name="password" placeholder="비밀번호 (비우면 공개방, 4자 이상이면 비밀방)" maxlength="50" autocomplete="new-password" style="background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; color: white; outline: none;">
+                        <button type="submit" class="btn" style="width: 100%;">+ 진실게임 방 만들기</button>
+                    </form>
+
+                    {% for tr in truth_rooms %}
+                        <a href="{{ url_for('truth_room', room_id=tr.id) }}" class="list-item">
+                            <span class="nickname">{% if tr.is_private %}🔒{% else %}🎭{% endif %} {{ tr.title }}</span>
+                            <span class="btn" style="padding: 4px 10px; font-size: 0.75rem;">입장</span>
+                        </a>
+                    {% else %}
+                        <div class="empty-text">아직 진실게임 방이 없어요. 첫 방을 만들어보세요! 🔥</div>
+                    {% endfor %}
+                </div>
+
                 <!-- 📝 글쓰기 -->
                 <div class="section-card">
                     <div class="section-title">📝 커뮤니티 게시판</div>
